@@ -1,0 +1,23 @@
+# permissions for end users to view valkeys.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: valkey-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: valkey-viewer-role
+rules:
+- apiGroups:
+  - hyperspike.io
+  resources:
+  - valkeys
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - hyperspike.io
+  resources:
+  - valkeys/status
+  verbs:
+  - get
