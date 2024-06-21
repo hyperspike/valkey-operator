@@ -1,8 +1,10 @@
 # valkey-operator
-// TODO(user): Add simple overview of use/purpose
+
+Provision valkey (redis) clusters
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+This operator creates valkey clusters and makes them available to other services on the k8s cluster
 
 ## Getting Started
 
