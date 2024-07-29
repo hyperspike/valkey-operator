@@ -49,10 +49,24 @@ type ValkeyReconciler struct {
 func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	// TODO(user): your logic here
-
 	return ctrl.Result{}, nil
 }
+
+func (r *ValkyReconciler) upsertConfigMap() {
+
+}
+
+func (r *ValkyReconciler) upsertService() {
+
+}
+
+func (r *ValkyReconciler) upsertServiceAccount() {
+}
+
+func (r *ValkyReconciler) upsertStatefulSet() {
+}
+
+func (r *ValkyReconciler) upsertSecret() {}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ValkeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
