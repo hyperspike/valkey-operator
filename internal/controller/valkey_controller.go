@@ -63,6 +63,9 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.upsertService(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
+	if err := r.upsertServiceHeadless(ctx, valkey); err != nil {
+		return ctrl.Result{}, err
+	}
 	if err := r.upsertServiceAccount(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -103,6 +106,63 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 }
 
 func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{},
+			},
+			Selector: map[string]string{
+				"": "",
+			},
+		},
+	}
+	if err := r.Create(ctx, svc); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, svc); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name + "-headless",
+			Namespace: valkey.Namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{},
+			},
+			Selector: map[string]string{
+				"": "",
+			},
+		},
+	}
+	if err := r.Create(ctx, svc); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, svc); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
 	return nil
 }
 
