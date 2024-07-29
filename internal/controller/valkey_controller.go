@@ -52,21 +52,21 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
-func (r *ValkyReconciler) upsertConfigMap() {
+func (r *ValkeyReconciler) upsertConfigMap() {
 
 }
 
-func (r *ValkyReconciler) upsertService() {
+func (r *ValkeyReconciler) upsertService() {
 
 }
 
-func (r *ValkyReconciler) upsertServiceAccount() {
+func (r *ValkeyReconciler) upsertServiceAccount() {
 }
 
-func (r *ValkyReconciler) upsertStatefulSet() {
+func (r *ValkeyReconciler) upsertStatefulSet() {
 }
 
-func (r *ValkyReconciler) upsertSecret() {}
+func (r *ValkeyReconciler) upsertSecret() {}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ValkeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
