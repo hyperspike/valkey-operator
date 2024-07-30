@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	hyperv1 "hyperspike.io/valkey-operator/api/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -127,9 +128,11 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 	if err := r.Create(ctx, svc); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
+				logger.Error(err, "failed to update service", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return err
 			}
 		} else {
+			logger.Error(err, "failed to create service", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
 	}
@@ -157,9 +160,39 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 	if err := r.Create(ctx, svc); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
+				logger.Error(err, "failed to update service", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return err
 			}
 		} else {
+			logger.Error(err, "failed to create service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+		},
+		Data: map[string][]byte{
+			"": {},
+		},
+	}
+	if err := r.Create(ctx, secret); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, secret); err != nil {
+				logger.Error(err, "failed to update secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				return err
+			}
+		} else {
+			logger.Error(err, "failed to create secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
 	}
@@ -167,14 +200,66 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 }
 
 func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	svc := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+		},
+	}
+	if err := r.Create(ctx, svc); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, svc); err != nil {
+				logger.Error(err, "failed to update service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				return err
+			}
+		} else {
+			logger.Error(err, "failed to create service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+	}
 	return nil
 }
 
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
-	return nil
-}
+	logger := log.FromContext(ctx)
 
-func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger.Info("upserting statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: nil,
+			Selector: nil,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"": "",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{},
+					},
+				},
+			},
+		},
+	}
+	if err := r.Create(ctx, sts); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, sts); err != nil {
+				logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				return err
+			}
+		} else {
+			logger.Error(err, "failed to create statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+	}
 	return nil
 }
 
