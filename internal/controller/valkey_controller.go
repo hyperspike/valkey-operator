@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"embed"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,6 +37,9 @@ type ValkeyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+
+//go:embed scripts/*
+var scripts embed.FS
 
 // +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys/status,verbs=get;update;patch
@@ -80,32 +84,6 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
-func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.Valkey) error {
-	logger := log.FromContext(ctx)
-
-	logger.Info("upserting configmap", "valkey", valkey.Name, "namespace", valkey.Namespace)
-
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      valkey.Name,
-			Namespace: valkey.Namespace,
-		},
-		Data: map[string]string{
-			"": "",
-		},
-	}
-	if err := r.Create(ctx, cm); err != nil {
-		if errors.IsAlreadyExists(err) {
-			if err := r.Update(ctx, cm); err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	}
-	return nil
-}
-
 func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -128,6 +106,49 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 	if err := r.Create(ctx, svc); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting configmap", "valkey", valkey.Name, "namespace", valkey.Namespace)
+
+	defaultConf, err := scripts.ReadFile("../scripts/default.conf")
+	if err != nil {
+		logger.Error(err, "failed to read default.conf")
+		return err
+	}
+	pingReadinessLocal, err := scripts.ReadFile("../scripts/ping_readiness_local.sh")
+	if err != nil {
+		logger.Error(err, "failed to read ping_readiness_local.sh")
+		return err
+	}
+	pingLivenessLocal, err := scripts.ReadFile("../scripts/ping_liveness_local.sh")
+	if err != nil {
+		logger.Error(err, "failed to read ping_liveness_local.sh")
+		return err
+	}
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+		},
+		Data: map[string]string{
+			"default.conf":            string(defaultConf),
+			"ping_readiness_local.sh": string(pingReadinessLocal),
+			"ping_liveness_local.sh":  string(pingLivenessLocal),
+		},
+	}
+	if err := r.Create(ctx, cm); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, cm); err != nil {
 				logger.Error(err, "failed to update service", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return err
 			}
