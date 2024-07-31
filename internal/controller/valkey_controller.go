@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -164,6 +165,9 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 		} else {
 			return err
 		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Service %s/%s is created", valkey.Namespace, valkey.Name))
 	}
 	return nil
 }
@@ -206,13 +210,16 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 	if err := r.Create(ctx, cm); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, cm); err != nil {
-				logger.Error(err, "failed to update service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Error(err, "failed to update ConfigMap", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return err
 			}
 		} else {
-			logger.Error(err, "failed to create service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create ConfigMap", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("ConfigMap %s/%s is created", valkey.Namespace, valkey.Name))
 	}
 	return nil
 }
@@ -260,6 +267,8 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 			return err
 		}
 	}
+	r.Recorder.Event(valkey, "Normal", "Created",
+		fmt.Sprintf("Service %s/%s is created", valkey.Namespace, valkey.Name+"-headless"))
 	return nil
 }
 
@@ -291,6 +300,8 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 			logger.Error(err, "failed to update secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Secret %s/%s is created", valkey.Namespace, valkey.Name))
 	} else if err == nil && !once {
 		if err := r.Update(ctx, secret); err != nil {
 			logger.Error(err, "failed to create secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
@@ -327,8 +338,19 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 			logger.Error(err, "failed to create service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("ServiceAccount %s/%s is created", valkey.Namespace, valkey.Name))
 	}
 	return nil
+}
+
+func getMasterNodes(valkey *hyperv1.Valkey) string {
+	var nodes []string
+	for i := 0; i <= int(valkey.Spec.MasterNodes); i++ {
+		nodes = append(nodes, valkey.Name+"-"+fmt.Sprint(i)+"."+valkey.Name+"-headless."+valkey.Namespace+".svc")
+	}
+	return strings.Join(nodes, " ")
 }
 
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
@@ -431,9 +453,8 @@ fi
 									},
 								},
 								{
-									Name: "VALKEY_NODES",
-									// @TODO generate nodes function
-									Value: valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc " + valkey.Name + "-1." + valkey.Name + "-headless." + valkey.Namespace + ".svc " + valkey.Name + "-2." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
+									Name:  "VALKEY_NODES",
+									Value: getMasterNodes(valkey),
 								},
 								{
 									Name: "REDISCLI_AUTH",
@@ -595,6 +616,9 @@ fi
 			logger.Error(err, "failed to create statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("StatefulSet %s/%s is created", valkey.Namespace, valkey.Name))
 	}
 	return nil
 }
