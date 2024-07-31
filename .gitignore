@@ -31,3 +31,4 @@ go.work
 .ingress.yaml
 blank.yaml
 cilium/
+manager

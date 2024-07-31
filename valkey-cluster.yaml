@@ -4,7 +4,7 @@ kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
   name: valkey-valkey-cluster
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm
@@ -32,7 +32,7 @@ apiVersion: policy/v1beta1
 kind: PodDisruptionBudget
 metadata:
   name: valkey-valkey-cluster
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm
@@ -53,7 +53,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: valkey-valkey-cluster
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm
@@ -67,7 +67,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: valkey-valkey-cluster
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm
@@ -83,7 +83,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: valkey-valkey-cluster-default
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm
@@ -2358,7 +2358,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: valkey-valkey-cluster-scripts
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm
@@ -2432,7 +2432,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: valkey-valkey-cluster-headless
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm
@@ -2459,7 +2459,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: valkey-valkey-cluster
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm
@@ -2484,7 +2484,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: valkey-valkey-cluster
-  namespace: "default"
+  namespace: derp
   labels:
     app.kubernetes.io/instance: valkey
     app.kubernetes.io/managed-by: Helm

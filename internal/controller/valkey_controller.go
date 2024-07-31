@@ -18,7 +18,11 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
 	"embed"
+	"fmt"
+	"io"
+	"math/big"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -34,6 +38,27 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func init() {
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		panic(fmt.Sprintf("crypto/rand is unavailable: Read() failed %#v", err))
+	}
+}
+
+func randString(n int) (string, error) {
+	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+	ret := make([]byte, n)
+	for i := 0; i < n; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			return "", err
+		}
+		ret[i] = letters[num.Int64()]
+	}
+
+	return string(ret), nil
+}
+
 // ValkeyReconciler reconciles a Valkey object
 type ValkeyReconciler struct {
 	client.Client
@@ -46,6 +71,11 @@ var scripts embed.FS
 // +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -136,17 +166,17 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 
 	logger.Info("upserting configmap", "valkey", valkey.Name, "namespace", valkey.Namespace)
 
-	defaultConf, err := scripts.ReadFile("../scripts/default.conf")
+	defaultConf, err := scripts.ReadFile("scripts/default.conf")
 	if err != nil {
 		logger.Error(err, "failed to read default.conf")
 		return err
 	}
-	pingReadinessLocal, err := scripts.ReadFile("../scripts/ping_readiness_local.sh")
+	pingReadinessLocal, err := scripts.ReadFile("scripts/ping_readiness_local.sh")
 	if err != nil {
 		logger.Error(err, "failed to read ping_readiness_local.sh")
 		return err
 	}
-	pingLivenessLocal, err := scripts.ReadFile("../scripts/ping_liveness_local.sh")
+	pingLivenessLocal, err := scripts.ReadFile("scripts/ping_liveness_local.sh")
 	if err != nil {
 		logger.Error(err, "failed to read ping_liveness_local.sh")
 		return err
@@ -158,7 +188,7 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 			Labels:    labels(valkey),
 		},
 		Data: map[string]string{
-			"default.conf":            string(defaultConf),
+			"valkey-default.conf":     string(defaultConf),
 			"ping_readiness_local.sh": string(pingReadinessLocal),
 			"ping_liveness_local.sh":  string(pingLivenessLocal),
 		},
@@ -188,8 +218,9 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 			Labels:    labels(valkey),
 		},
 		Spec: corev1.ServiceSpec{
-			Type:      corev1.ServiceTypeClusterIP,
-			ClusterIP: "None",
+			Type:                     corev1.ServiceTypeClusterIP,
+			ClusterIP:                "None",
+			PublishNotReadyAddresses: true,
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "tcp-valkey",
@@ -223,6 +254,10 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	rs, err := randString(16)
+	if err != nil {
+		return err
+	}
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -231,8 +266,7 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 			Labels:    labels(valkey),
 		},
 		Data: map[string][]byte{
-			// @TODO generate cluster password
-			"": {},
+			"password": []byte(rs),
 		},
 	}
 	if err := r.Create(ctx, secret); err != nil {
@@ -294,7 +328,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:   valkey.Name + "-data",
+						Name:   "valkey-data",
 						Labels: labels(valkey),
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
@@ -346,6 +380,10 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 							},
 							Name:            "valkey",
 							ImagePullPolicy: "IfNotPresent",
+							Command: []string{
+								"/bin/bash",
+								"-c",
+							},
 							Args: []string{
 								`# Backwards compatibility change
 if ! [[ -f /opt/bitnami/valkey/etc/valkey.conf ]]; then
@@ -376,6 +414,17 @@ fi
 								},
 								{
 									Name: "REDISCLI_AUTH",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											Key: "password",
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: valkey.Name,
+											},
+										},
+									},
+								},
+								{
+									Name: "VALKEY_PASSWORD",
 									ValueFrom: &corev1.EnvVarSource{
 										SecretKeyRef: &corev1.SecretKeySelector{
 											Key: "password",
@@ -451,8 +500,8 @@ fi
 								},
 								{
 									Name:      "valkey-conf",
-									MountPath: "/opt/bitnami/valkey/etc/valkey.conf",
-									SubPath:   "default.conf",
+									MountPath: "/opt/bitnami/valkey/etc/valkey-default.conf",
+									SubPath:   "valkey-default.conf",
 								},
 								{
 									Name:      "empty-dir",
@@ -485,7 +534,7 @@ fi
 									LocalObjectReference: corev1.LocalObjectReference{
 										Name: valkey.Name,
 									},
-									DefaultMode: func(i int32) *int32 { return &i }(755),
+									DefaultMode: func(i int32) *int32 { return &i }(0755),
 								},
 							},
 						},
