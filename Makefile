@@ -10,6 +10,10 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+GO := $(shell which go)
+MINIKUBE := $(shell which minikube)
+KUBECTL := $(shell which kubectl)
+
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
@@ -20,6 +24,18 @@ CONTAINER_TOOL ?= docker
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
+
+K8S_VERSION ?= 1.30.3
+CILIUM_VERSION ?= 1.16.0
+
+V ?= 0
+ifeq ($(V), 1)
+	Q =
+	VV = -v
+else
+	Q = @
+	VV =
+endif
 
 .PHONY: all
 all: build
@@ -162,6 +178,16 @@ KUSTOMIZE_VERSION ?= v5.4.1
 CONTROLLER_TOOLS_VERSION ?= v0.15.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
+
+.PHONY: minikube tunnel proxy
+minikube: ## Spool up a local minikube cluster for development
+	$QK8S_VERSION=$(K8S_VERSION) CILIUM_VERSION=$(CILIUM_VERSION) scripts/minikube.sh
+
+tunnel: ## turn on minikube's tunnel to test ingress and get UI access
+	$Q$(MINIKUBE) tunnel -p north
+
+proxy: ## turn on a port to push locally built containers into the cluster
+	$Q$(KUBECTL) port-forward --namespace kube-system service/registry 5000:80
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
