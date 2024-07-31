@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -84,6 +85,14 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
+func labels(valkey *hyperv1.Valkey) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":      "valkey",
+		"app.kubernetes.io/instance":  valkey.Name,
+		"app.kubernetes.io/component": "valkey",
+	}
+}
+
 func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -93,14 +102,20 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
 		},
 		Spec: corev1.ServiceSpec{
+			Type: corev1.ServiceTypeClusterIP,
 			Ports: []corev1.ServicePort{
-				{},
+				{
+					Name:       "tcp-valkey",
+					Port:       6379,
+					TargetPort: intstr.FromString("tcp-valkey"),
+					Protocol:   corev1.ProtocolTCP,
+					NodePort:   0,
+				},
 			},
-			Selector: map[string]string{
-				"": "",
-			},
+			Selector: labels(valkey),
 		},
 	}
 	if err := r.Create(ctx, svc); err != nil {
@@ -139,6 +154,7 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
 		},
 		Data: map[string]string{
 			"default.conf":            string(defaultConf),
@@ -168,14 +184,24 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name + "-headless",
 			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
 		},
 		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: "None",
 			Ports: []corev1.ServicePort{
-				{},
+				{
+					Name:       "tcp-valkey",
+					Port:       6379,
+					TargetPort: intstr.FromString("tcp-valkey"),
+				},
+				{
+					Name:       "tcp-valkey-bus",
+					Port:       16379,
+					TargetPort: intstr.FromString("tcp-valkey-bus"),
+				},
 			},
-			Selector: map[string]string{
-				"": "",
-			},
+			Selector: labels(valkey),
 		},
 	}
 	if err := r.Create(ctx, svc); err != nil {
@@ -201,8 +227,10 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
 		},
 		Data: map[string][]byte{
+			// @TODO generate cluster password
 			"": {},
 		},
 	}
@@ -228,6 +256,7 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
 		},
 	}
 	if err := r.Create(ctx, svc); err != nil {
@@ -252,15 +281,14 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas: nil,
 			Selector: nil,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"": "",
-					},
+					Labels: labels(valkey),
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
