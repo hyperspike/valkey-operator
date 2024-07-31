@@ -21,6 +21,7 @@ import (
 	"embed"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -284,15 +285,226 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Labels:    labels(valkey),
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: nil,
-			Selector: nil,
+			Replicas: func(i int32) *int32 { return &i }(3),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels(valkey),
+			},
+			ServiceName:         valkey.Name + "-headless",
+			PodManagementPolicy: appsv1.ParallelPodManagement,
+			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   valkey.Name + "-data",
+						Labels: labels(valkey),
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							"ReadWriteOnce",
+						},
+						Resources: corev1.VolumeResourceRequirements{
+							Requests: corev1.ResourceList{
+								"storage": func(s string) resource.Quantity { return resource.MustParse(s) }("8Gi"),
+							},
+						},
+					},
+				},
+			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels(valkey),
 				},
 				Spec: corev1.PodSpec{
+					ServiceAccountName: valkey.Name,
+					EnableServiceLinks: func(b bool) *bool { return &b }(false),
+					HostNetwork:        false,
+					SecurityContext: &corev1.PodSecurityContext{
+						FSGroup:             func(i int64) *int64 { return &i }(1001),
+						FSGroupChangePolicy: func(s corev1.PodFSGroupChangePolicy) *corev1.PodFSGroupChangePolicy { return &s }(corev1.FSGroupChangeAlways),
+						SupplementalGroups:  []int64{},
+						Sysctls:             []corev1.Sysctl{},
+					},
+					AutomountServiceAccountToken: func(b bool) *bool { return &b }(false),
 					Containers: []corev1.Container{
-						{},
+						{
+							Image: "docker.io/bitnami/valkey-cluster:7.2.5-debian-12-r4",
+							SecurityContext: &corev1.SecurityContext{
+								AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{
+										"ALL",
+									},
+								},
+								Privileged:             func(b bool) *bool { return &b }(false),
+								ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
+								RunAsNonRoot:           func(b bool) *bool { return &b }(true),
+								RunAsUser:              func(i int64) *int64 { return &i }(1001),
+								RunAsGroup:             func(i int64) *int64 { return &i }(1001),
+								SELinuxOptions:         &corev1.SELinuxOptions{},
+								SeccompProfile: &corev1.SeccompProfile{
+									Type: "RuntimeDefault",
+								},
+							},
+							Name:            "valkey",
+							ImagePullPolicy: "IfNotPresent",
+							Args: []string{
+								`# Backwards compatibility change
+if ! [[ -f /opt/bitnami/valkey/etc/valkey.conf ]]; then
+  echo COPYING FILE
+  cp  /opt/bitnami/valkey/etc/valkey-default.conf /opt/bitnami/valkey/etc/valkey.conf
+fi
+pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
+pod_index="${pod_index[-1]}"
+if [[ "$pod_index" == "0" ]]; then
+  export VALKEY_CLUSTER_CREATOR="yes"
+  export VALKEY_CLUSTER_REPLICAS="0"
+fi
+/opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh`,
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name: "POD_NAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+								{
+									Name: "VALKEY_NODES",
+									// @TODO generate nodes function
+									Value: valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc " + valkey.Name + "-1." + valkey.Name + "-headless." + valkey.Namespace + ".svc " + valkey.Name + "-2." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
+								},
+								{
+									Name: "REDISCLI_AUTH",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											Key: "password",
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: valkey.Name,
+											},
+										},
+									},
+								},
+								{
+									Name:  "VALKEY_AOF_ENABLED",
+									Value: "yes",
+								},
+								{
+									Name:  "VALKEY_TLS_ENABLED",
+									Value: "no",
+								},
+								{
+									Name:  "VALKEY_PORT_NUMBER",
+									Value: "6379",
+								},
+							},
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "tcp-valkey",
+									ContainerPort: 6379,
+								},
+								{
+									Name:          "tcp-valkey-bus",
+									ContainerPort: 16379,
+								},
+							},
+							LivenessProbe: &corev1.Probe{
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
+								FailureThreshold:    5,
+								TimeoutSeconds:      6,
+								SuccessThreshold:    1,
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{
+											"sh",
+											"-c",
+											"/scripts/ping_liveness_local.sh 5",
+										},
+									},
+								},
+							},
+							ReadinessProbe: &corev1.Probe{
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
+								FailureThreshold:    5,
+								TimeoutSeconds:      2,
+								SuccessThreshold:    1,
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{
+											"sh",
+											"-c",
+											"/scripts/ping_readiness_local.sh 1",
+										},
+									},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "scripts",
+									MountPath: "/scripts",
+								},
+								{
+									Name:      "valkey-data",
+									MountPath: "/bitnami/valkey/data",
+								},
+								{
+									Name:      "valkey-conf",
+									MountPath: "/opt/bitnami/valkey/etc/valkey.conf",
+									SubPath:   "default.conf",
+								},
+								{
+									Name:      "empty-dir",
+									MountPath: "/opt/bitnami/valkey/etc/",
+									SubPath:   "app-conf-dir",
+								},
+								{
+									Name:      "empty-dir",
+									MountPath: "/opt/bitnami/valkey/tmp",
+									SubPath:   "app-tmp-dir",
+								},
+								{
+									Name:      "empty-dir",
+									MountPath: "/opt/bitnami/valkey/logs",
+									SubPath:   "app-logs-dir",
+								},
+								{
+									Name:      "empty-dir",
+									MountPath: "/tmp",
+									SubPath:   "tmp-dir",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "scripts",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: valkey.Name,
+									},
+									DefaultMode: func(i int32) *int32 { return &i }(755),
+								},
+							},
+						},
+						{
+							Name: "valkey-conf",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: valkey.Name,
+									},
+								},
+							},
+						},
+						{
+							Name: "empty-dir",
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
 					},
 				},
 			},
