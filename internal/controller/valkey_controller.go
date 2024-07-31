@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -63,7 +64,8 @@ func randString(n int) (string, error) {
 // ValkeyReconciler reconciles a Valkey object
 type ValkeyReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Recorder record.EventRecorder
+	Scheme   *runtime.Scheme
 }
 
 //go:embed scripts/*
@@ -107,7 +109,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.upsertServiceAccount(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.upsertSecret(ctx, valkey); err != nil {
+	if err := r.upsertSecret(ctx, valkey, true); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := r.upsertStatefulSet(ctx, valkey); err != nil {
@@ -260,7 +262,7 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 	return nil
 }
 
-func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey) error {
+func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey, once bool) error {
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
@@ -283,7 +285,7 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 		return err
 	}
 	if err := r.Create(ctx, secret); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if errors.IsAlreadyExists(err) && !once {
 			if err := r.Update(ctx, secret); err != nil {
 				logger.Error(err, "failed to update secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return err
@@ -335,7 +337,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Labels:    labels(valkey),
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: func(i int32) *int32 { return &i }(3),
+			Replicas: func(i int32) *int32 { return &i }(valkey.Spec.MasterNodes * (valkey.Spec.Replicas + 1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels(valkey),
 			},
@@ -376,7 +378,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 					AutomountServiceAccountToken: func(b bool) *bool { return &b }(false),
 					Containers: []corev1.Container{
 						{
-							Image: "docker.io/bitnami/valkey-cluster:7.2.5-debian-12-r4",
+							Image: valkey.Spec.Image,
 							SecurityContext: &corev1.SecurityContext{
 								AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
 								Capabilities: &corev1.Capabilities{

@@ -28,20 +28,44 @@ type ValkeySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of Valkey. Edit valkey_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Image to use
+	// +kubebuilder:default:="docker.io/bitnami/valkey-cluster:7.2.5-debian-12-r4"
+	Image string `json:"image,omitempty"`
+
+	// Number of nodes
+	// +kubebuilder:default:=3
+	MasterNodes int32 `json:"masterNodes,omitempty"`
+
+	// Number of replicas
+	// +kubebuilder:default:=0
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// Rootless mode
+	// +kubebuilder:default:=true
+	Rootless bool `json:"rootless,omitempty"`
+
+	// Enable prometheus
+	// +kubebuilder:default:=false
+	Prometheus bool `json:"prometheus,omitempty"`
 }
 
 // ValkeyStatus defines the observed state of Valkey
 type ValkeyStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Ready      bool               `json:"ready"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
 // Valkey is the Schema for the valkeys API
+// +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=`.status.ready`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Nodes",type="integer",JSONPath=".spec.masterNodes"
+// +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
+// +kubebuilder:printcolumn:name="Rootless",type="boolean",priority=1,JSONPath=".spec.rootless"
+// +kubebuilder:printcolumn:name="Image",type="string",priority=1,JSONPath=".spec.image"
 type Valkey struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

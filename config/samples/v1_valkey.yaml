@@ -6,4 +6,5 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: valkey-sample
 spec:
+  rootless: true
   # TODO(user): Add fields here
