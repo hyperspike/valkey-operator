@@ -3,10 +3,10 @@
 kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: valkey-valkey-cluster
-  namespace: derp
+  name: valkey-cluster
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
@@ -14,7 +14,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/instance: valkey
+      app.kubernetes.io/instance: valkey-cluster
       app.kubernetes.io/name: valkey-cluster
   policyTypes:
     - Ingress
@@ -31,10 +31,10 @@ spec:
 apiVersion: policy/v1beta1
 kind: PodDisruptionBudget
 metadata:
-  name: valkey-valkey-cluster
-  namespace: derp
+  name: valkey-cluster
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
@@ -43,19 +43,19 @@ spec:
   maxUnavailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/instance: valkey
+      app.kubernetes.io/instance: valkey-cluster
       app.kubernetes.io/name: valkey-cluster
     matchExpressions:
-      - {key: job-name, operator: NotIn, values: [valkey-valkey-cluster-cluster-update]}
+      - {key: job-name, operator: NotIn, values: [valkey-cluster-cluster-update]}
 ---
 # Source: valkey-cluster/templates/valkey-serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: valkey-valkey-cluster
-  namespace: derp
+  name: valkey-cluster
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
@@ -66,26 +66,26 @@ automountServiceAccountToken: false
 apiVersion: v1
 kind: Secret
 metadata:
-  name: valkey-valkey-cluster
-  namespace: derp
+  name: valkey-cluster
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
     helm.sh/chart: valkey-cluster-0.1.6
 type: Opaque
 data:
-  valkey-password: "bXB1MnBkOTF5UA=="
+  valkey-password: "NndEVGFBcERkWA=="
 ---
 # Source: valkey-cluster/templates/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: valkey-valkey-cluster-default
-  namespace: derp
+  name: valkey-cluster-default
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
@@ -2357,10 +2357,10 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: valkey-valkey-cluster-scripts
-  namespace: derp
+  name: valkey-cluster-scripts
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
@@ -2431,10 +2431,10 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: valkey-valkey-cluster-headless
-  namespace: derp
+  name: valkey-cluster-headless
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
@@ -2451,17 +2451,17 @@ spec:
       port: 16379
       targetPort: tcp-redis-bus
   selector:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/name: valkey-cluster
 ---
 # Source: valkey-cluster/templates/valkey-svc.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: valkey-valkey-cluster
-  namespace: derp
+  name: valkey-cluster
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
@@ -2476,17 +2476,17 @@ spec:
       protocol: TCP
       nodePort: null
   selector:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/name: valkey-cluster
 ---
 # Source: valkey-cluster/templates/valkey-statefulset.yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: valkey-valkey-cluster
-  namespace: derp
+  name: valkey-cluster
+  namespace: "default"
   labels:
-    app.kubernetes.io/instance: valkey
+    app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
     app.kubernetes.io/version: 7.2.5
@@ -2498,23 +2498,23 @@ spec:
     type: RollingUpdate
   selector:
     matchLabels:
-      app.kubernetes.io/instance: valkey
+      app.kubernetes.io/instance: valkey-cluster
       app.kubernetes.io/name: valkey-cluster
-  replicas: 3
-  serviceName: valkey-valkey-cluster-headless
+  replicas: 6
+  serviceName: valkey-cluster-headless
   podManagementPolicy: Parallel
   template:
     metadata:
       labels:
-        app.kubernetes.io/instance: valkey
+        app.kubernetes.io/instance: valkey-cluster
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: valkey-cluster
         app.kubernetes.io/version: 7.2.5
         helm.sh/chart: valkey-cluster-0.1.6
       annotations:
-        checksum/scripts: e9bedbe3cc82f1cef4a03e2ad027be65069348848f74133cc3a547ce3272d5e9
-        checksum/secret: ab1197d79396e6d3977140e92eaffefc07f1dc29657d09d3d00ec27d5211e740
-        checksum/config: 7923fae44d162273a1ceb6fcc0efee2c974943fe950a14f31252ff0ae4b97b99
+        checksum/scripts: a13fab32f2191f02d2555bfdc3aa2345d29ed3af1ed37c17194a0283c1ff6b80
+        checksum/secret: 164958db9f2f829f97dc7a2e4544df2c3be86e3167bcf08b28d2298fe8fb6047
+        checksum/config: 8a6600ab54d9e58283f30604d5d59c76911e924733469ad541e085d3d76ea038
     spec:
       hostNetwork: false
       enableServiceLinks: false
@@ -2524,7 +2524,7 @@ spec:
         fsGroupChangePolicy: Always
         supplementalGroups: []
         sysctls: []
-      serviceAccountName: valkey-valkey-cluster
+      serviceAccountName: valkey-cluster
       automountServiceAccountToken: false
       affinity:
         podAffinity:
@@ -2534,14 +2534,14 @@ spec:
             - podAffinityTerm:
                 labelSelector:
                   matchLabels:
-                    app.kubernetes.io/instance: valkey
+                    app.kubernetes.io/instance: valkey-cluster
                     app.kubernetes.io/name: valkey-cluster
                 topologyKey: kubernetes.io/hostname
               weight: 1
         nodeAffinity:
           
       containers:
-        - name: valkey-valkey-cluster
+        - name: valkey-cluster
           image: docker.io/bitnami/valkey-cluster:7.2.5-debian-12-r4
           imagePullPolicy: "IfNotPresent"
           securityContext:
@@ -2569,7 +2569,7 @@ spec:
               pod_index="${pod_index[-1]}"
               if [[ "$pod_index" == "0" ]]; then
                 export VALKEY_CLUSTER_CREATOR="yes"
-                export VALKEY_CLUSTER_REPLICAS="0"
+                export VALKEY_CLUSTER_REPLICAS="1"
               fi
               /opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh
           env:
@@ -2578,16 +2578,16 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: VALKEY_NODES
-              value: "valkey-valkey-cluster-0.valkey-valkey-cluster-headless valkey-valkey-cluster-1.valkey-valkey-cluster-headless valkey-valkey-cluster-2.valkey-valkey-cluster-headless "
+              value: "valkey-cluster-0.valkey-cluster-headless valkey-cluster-1.valkey-cluster-headless valkey-cluster-2.valkey-cluster-headless valkey-cluster-3.valkey-cluster-headless valkey-cluster-4.valkey-cluster-headless valkey-cluster-5.valkey-cluster-headless "
             - name: REDISCLI_AUTH
               valueFrom:
                 secretKeyRef:
-                  name: valkey-valkey-cluster
+                  name: valkey-cluster
                   key: valkey-password
             - name: VALKEY_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: valkey-valkey-cluster
+                  name: valkey-cluster
                   key: valkey-password
             - name: VALKEY_AOF_ENABLED
               value: "yes"
@@ -2657,18 +2657,18 @@ spec:
       volumes:
         - name: scripts
           configMap:
-            name: valkey-valkey-cluster-scripts
+            name: valkey-cluster-scripts
             defaultMode: 0755
         - name: default-config
           configMap:
-            name: valkey-valkey-cluster-default
+            name: valkey-cluster-default
         - name: empty-dir
           emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: valkey-data
         labels:
-          app.kubernetes.io/instance: valkey
+          app.kubernetes.io/instance: valkey-cluster
           app.kubernetes.io/name: valkey-cluster
       spec:
         accessModes:

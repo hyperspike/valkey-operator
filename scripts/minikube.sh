@@ -115,6 +115,7 @@ data:
 	sed -i'' -e 's/\(replicas:\).*/\1\ 2/' .coredns.yaml
 	kubectl apply -f .coredns.yaml
 	kubectl apply -f $SCRIPT_DIR/postgres-operator.yaml
+	kubectl apply -f $SCRIPT_DIR/minikube-pvc-hack.yaml
 }
 
 helm repo add cilium https://helm.cilium.io/ || true
