@@ -25,3 +25,10 @@ go.work
 *.swp
 *.swo
 *~
+
+.cni-north.yaml
+.coredns.yaml
+.ingress.yaml
+blank.yaml
+cilium/
+manager
