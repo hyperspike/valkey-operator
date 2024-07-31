@@ -313,7 +313,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: localhost:5000/controller:7
+        image: localhost:5000/controller:1
         livenessProbe:
           httpGet:
             path: /healthz

@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minikube-pv-hack
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: minikube-pv-hack
+  namespace: minikube-pv-hack
+spec:
+  selector:
+    matchLabels:
+      name: minikube-pv-hack
+  template:
+    metadata:
+      labels:
+        name: minikube-pv-hack
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: minikube-pv-hack
+        image: registry.access.redhat.com/ubi8:latest
+        command:
+        - bash
+        - -c
+        - |
+          while : ; do
+            chmod 777 /target/*
+            sleep 1
+          done
+        volumeMounts:
+        - name: host-vol
+          mountPath: /target
+      volumes:
+      - name: host-vol
+        hostPath:
+          path: /tmp/hostpath-provisioner/default

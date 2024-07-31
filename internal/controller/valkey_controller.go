@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	hyperv1 "hyperspike.io/valkey-operator/api/v1"
@@ -149,6 +150,9 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 			Selector: labels(valkey),
 		},
 	}
+	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
+		return err
+	}
 	if err := r.Create(ctx, svc); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
@@ -193,6 +197,9 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 			"ping_liveness_local.sh":  string(pingLivenessLocal),
 		},
 	}
+	if err := controllerutil.SetControllerReference(valkey, cm, r.Scheme); err != nil {
+		return err
+	}
 	if err := r.Create(ctx, cm); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, cm); err != nil {
@@ -236,6 +243,9 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 			Selector: labels(valkey),
 		},
 	}
+	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
+		return err
+	}
 	if err := r.Create(ctx, svc); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
@@ -269,6 +279,9 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 			"password": []byte(rs),
 		},
 	}
+	if err := controllerutil.SetControllerReference(valkey, secret, r.Scheme); err != nil {
+		return err
+	}
 	if err := r.Create(ctx, secret); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, secret); err != nil {
@@ -287,16 +300,19 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
-	svc := &corev1.ServiceAccount{
+	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
 			Labels:    labels(valkey),
 		},
 	}
-	if err := r.Create(ctx, svc); err != nil {
+	if err := controllerutil.SetControllerReference(valkey, sa, r.Scheme); err != nil {
+		return err
+	}
+	if err := r.Create(ctx, sa); err != nil {
 		if errors.IsAlreadyExists(err) {
-			if err := r.Update(ctx, svc); err != nil {
+			if err := r.Update(ctx, sa); err != nil {
 				logger.Error(err, "failed to update service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return err
 			}
@@ -558,6 +574,9 @@ fi
 				},
 			},
 		},
+	}
+	if err := controllerutil.SetControllerReference(valkey, sts, r.Scheme); err != nil {
+		return err
 	}
 	if err := r.Create(ctx, sts); err != nil {
 		if errors.IsAlreadyExists(err) {
