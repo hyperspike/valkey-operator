@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -284,16 +285,20 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 	if err := controllerutil.SetControllerReference(valkey, secret, r.Scheme); err != nil {
 		return err
 	}
-	if err := r.Create(ctx, secret); err != nil {
-		if errors.IsAlreadyExists(err) && !once {
-			if err := r.Update(ctx, secret); err != nil {
-				logger.Error(err, "failed to update secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
-				return err
-			}
-		} else {
+	err = r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, secret)
+	if err != nil && errors.IsNotFound(err) {
+		if err := r.Create(ctx, secret); err != nil {
+			logger.Error(err, "failed to update secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+	} else if err == nil && !once {
+		if err := r.Update(ctx, secret); err != nil {
 			logger.Error(err, "failed to create secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
+	} else {
+		logger.Error(err, "failed fetching secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		return err
 	}
 	return nil
 }
