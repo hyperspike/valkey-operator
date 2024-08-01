@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: localhost:5000/controller
-  newTag: "4"
+  newTag: "3"

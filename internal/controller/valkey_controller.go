@@ -84,6 +84,7 @@ var scripts embed.FS
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -294,9 +295,10 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 			logger.Error(err, "failed to create service", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Service %s/%s is created", valkey.Namespace, valkey.Name+"-headless"))
 	}
-	r.Recorder.Event(valkey, "Normal", "Created",
-		fmt.Sprintf("Service %s/%s is created", valkey.Namespace, valkey.Name+"-headless"))
 	return nil
 }
 
@@ -335,7 +337,7 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 			logger.Error(err, "failed to create secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return "", err
 		}
-	} else {
+	} else if err != nil {
 		logger.Error(err, "failed fetching secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
 		return "", err
 	}
@@ -375,8 +377,8 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 
 func getMasterNodes(valkey *hyperv1.Valkey) string {
 	var nodes []string
-	for i := 0; i <= int(valkey.Spec.MasterNodes); i++ {
-		nodes = append(nodes, valkey.Name+"-"+fmt.Sprint(i)+"."+valkey.Name+"-headless."+valkey.Namespace+".svc")
+	for i := 0; i < int(valkey.Spec.MasterNodes); i++ {
+		nodes = append(nodes, valkey.Name+"-"+fmt.Sprint(i)+"."+valkey.Name+"-headless")
 	}
 	return strings.Join(nodes, " ")
 }

@@ -292,6 +292,13 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
   - hyperspike.io
   resources:
   - valkeys
@@ -428,7 +435,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: localhost:5000/controller:4
+        image: localhost:5000/controller:3
         livenessProbe:
           httpGet:
             path: /healthz
