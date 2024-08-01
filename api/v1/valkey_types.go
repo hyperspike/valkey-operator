@@ -58,6 +58,7 @@ type ValkeyStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+//+kubebuilder:resource:shortName=vk
 
 // Valkey is the Schema for the valkeys API
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=`.status.ready`

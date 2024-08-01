@@ -11,6 +11,8 @@ spec:
     kind: Valkey
     listKind: ValkeyList
     plural: valkeys
+    shortNames:
+    - vk
     singular: valkey
   scope: Namespaced
   versions:
