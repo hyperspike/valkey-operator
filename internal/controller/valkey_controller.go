@@ -377,7 +377,7 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 
 func getMasterNodes(valkey *hyperv1.Valkey) string {
 	var nodes []string
-	for i := 0; i < int(valkey.Spec.MasterNodes); i++ {
+	for i := 0; i < int(valkey.Spec.MasterNodes)*(int(valkey.Spec.Replicas)+1); i++ {
 		nodes = append(nodes, valkey.Name+"-"+fmt.Sprint(i)+"."+valkey.Name+"-headless")
 	}
 	return strings.Join(nodes, " ")
@@ -433,6 +433,21 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 						Sysctls:             []corev1.Sysctl{},
 					},
 					AutomountServiceAccountToken: func(b bool) *bool { return &b }(false),
+					Affinity: &corev1.Affinity{
+						PodAntiAffinity: &corev1.PodAntiAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+								{
+									Weight: 1,
+									PodAffinityTerm: corev1.PodAffinityTerm{
+										LabelSelector: &metav1.LabelSelector{
+											MatchLabels: labels(valkey),
+										},
+										TopologyKey: "kubernetes.io/hostname",
+									},
+								},
+							},
+						},
+					},
 					Containers: []corev1.Container{
 						{
 							Image: valkey.Spec.Image,
@@ -460,7 +475,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 								"-c",
 							},
 							Args: []string{
-								`# Backwards compatibility change
+								fmt.Sprintf(`# Backwards compatibility change
 if ! [[ -f /opt/bitnami/valkey/etc/valkey.conf ]]; then
   echo COPYING FILE
   cp  /opt/bitnami/valkey/etc/valkey-default.conf /opt/bitnami/valkey/etc/valkey.conf
@@ -469,9 +484,9 @@ pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
 pod_index="${pod_index[-1]}"
 if [[ "$pod_index" == "0" ]]; then
   export VALKEY_CLUSTER_CREATOR="yes"
-  export VALKEY_CLUSTER_REPLICAS="0"
+  export VALKEY_CLUSTER_REPLICAS="%d"
 fi
-/opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh`,
+/opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh`, valkey.Spec.Replicas),
 							},
 							Env: []corev1.EnvVar{
 								{
