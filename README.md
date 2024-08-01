@@ -6,6 +6,8 @@ Provision valkey (redis) clusters
 
 This operator creates valkey clusters and makes them available to other services on the k8s cluster
 
+See the following link for more information on avialable Custom Resource Options: [https://doc.crds.dev/github.com/hyperspike/valkey-operator](https://doc.crds.dev/github.com/hyperspike/valkey-operator)
+
 ## Getting Started
 
 ### Prerequisites
@@ -88,7 +90,7 @@ its dependencies.
 Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project, i.e.:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/valkey-operator/<tag or branch>/dist/install.yaml
+kubectl apply -f https://raw.githubusercontent.com/hyperspike/valkey-operator/v0.0.1/dist/install.yaml
 ```
 
 ## Contributing
