@@ -63,7 +63,7 @@ spec:
             description: ValkeySpec defines the desired state of Valkey
             properties:
               image:
-                default: docker.io/bitnami/valkey-cluster:7.2.5-debian-12-r4
+                default: docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0
                 description: Image to use
                 type: string
               masterNodes:

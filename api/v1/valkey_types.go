@@ -29,7 +29,7 @@ type ValkeySpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Image to use
-	// +kubebuilder:default:="docker.io/bitnami/valkey-cluster:7.2.5-debian-12-r4"
+	// +kubebuilder:default:="docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0"
 	Image string `json:"image,omitempty"`
 
 	// Number of nodes
