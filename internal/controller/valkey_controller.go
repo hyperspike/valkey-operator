@@ -428,6 +428,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		ids[hostname] = id
 	}
 	if oldnodes > newnodes {
+		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Scaling in cluster nodes %s/%s", valkey.Namespace, valkey.Name))
 		for i := oldnodes - 1; i >= newnodes; i-- { // remove nodes
 			if _, ok := ids[fmt.Sprintf("%s-%d", valkey.Name, i)]; !ok {
 				logger.Info("node not found", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", fmt.Sprintf("%s-%d", valkey.Name, i))
@@ -439,6 +440,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 			}
 		}
 	} else {
+		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Scaling out cluster nodes %s/%s", valkey.Namespace, valkey.Name))
 		for i := oldnodes; i < newnodes; i++ { // add nodes
 			name := fmt.Sprintf("%s-%d", valkey.Name, i)
 			if err := r.waitForPod(ctx, name, valkey.Namespace); err != nil {
@@ -762,20 +764,6 @@ fi
 	if err := controllerutil.SetControllerReference(valkey, sts, r.Scheme); err != nil {
 		return err
 	}
-	if err := r.Create(ctx, sts); err != nil {
-		if errors.IsAlreadyExists(err) {
-			if err := r.Update(ctx, sts); err != nil {
-				logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
-				return err
-			}
-		} else {
-			logger.Error(err, "failed to create statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
-			return err
-		}
-	} else {
-		r.Recorder.Event(valkey, "Normal", "Created",
-			fmt.Sprintf("StatefulSet %s/%s is created", valkey.Namespace, valkey.Name))
-	}
 
 	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, sts)
 	if err != nil && errors.IsNotFound(err) {
@@ -793,6 +781,7 @@ fi
 	if *sts.Spec.Replicas != valkey.Spec.MasterNodes {
 		oldnodes := *sts.Spec.Replicas
 		sts.Spec.Replicas = &valkey.Spec.MasterNodes
+		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getMasterNodes(valkey)
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
