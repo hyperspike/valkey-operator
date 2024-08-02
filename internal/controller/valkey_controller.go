@@ -84,6 +84,7 @@ var scripts embed.FS
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
@@ -443,22 +444,72 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Scaling out cluster nodes %s/%s", valkey.Namespace, valkey.Name))
 		for i := oldnodes; i < newnodes; i++ { // add nodes
 			name := fmt.Sprintf("%s-%d", valkey.Name, i)
+			logger.Info("adding node", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", name)
 			if err := r.waitForPod(ctx, name, valkey.Namespace); err != nil {
 				logger.Error(err, "failed to wait for pod", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", name)
 				return err
 			}
-			addr, err := net.LookupHost(fmt.Sprintf("%s.%s-headless.%s.svc", name, valkey.Name, valkey.Namespace))
+			addr, err := r.getPodIp(ctx, name, valkey.Namespace)
 			if err != nil {
 				logger.Error(err, "failed to lookup host", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return err
 			}
-			if err := vClient.Do(ctx, vClient.B().ClusterMeet().Ip(addr[0]).Port(6379).Build()).Error(); err != nil {
+			var dial int
+			for {
+				network, err := net.Dial("tcp", addr+":6379")
+				if err != nil {
+					network.Close()
+					time.Sleep(time.Second * 2)
+					dial++
+					if dial > 60 {
+						logger.Error(err, "failed to dial", "valkey", valkey.Name, "namespace", valkey.Namespace)
+						break
+					}
+					continue
+				}
+				if network != nil {
+					network.Close()
+				} else {
+					time.Sleep(time.Second * 2)
+					dial++
+					if dial > 60 {
+						logger.Error(err, "failed to dial", "valkey", valkey.Name, "namespace", valkey.Namespace)
+						break
+					}
+					continue
+				}
+				break
+			}
+			if dial > 60 {
+				logger.Error(err, "failed to dial", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				continue
+			}
+			res, err := vClient.Do(ctx, vClient.B().ClusterMeet().Ip(addr).Port(6379).Build()).ToString()
+			logger.Info("meeting node "+res, "valkey", valkey.Name, "namespace", valkey.Namespace, "node", name)
+			if err != nil {
 				logger.Error(err, "failed to meet node", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", name)
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func (r *ValkeyReconciler) getPodIp(ctx context.Context, name, namespace string) (string, error) {
+	logger := log.FromContext(ctx)
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, pod); err != nil {
+		logger.Error(err, "failed fetching pod", "name", name, "namespace", namespace)
+		return "", err
+	}
+	return pod.Status.PodIP, nil
 }
 
 func (r *ValkeyReconciler) waitForPod(ctx context.Context, name, namespace string) error {
