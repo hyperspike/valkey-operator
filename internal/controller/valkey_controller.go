@@ -458,7 +458,9 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 			for {
 				network, err := net.Dial("tcp", addr+":6379")
 				if err != nil {
-					network.Close()
+					if err := network.Close(); err != nil {
+						logger.Error(err, "failed to close network", "valkey", valkey.Name, "namespace", valkey.Namespace)
+					}
 					time.Sleep(time.Second * 2)
 					dial++
 					if dial > 60 {
@@ -468,7 +470,9 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 					continue
 				}
 				if network != nil {
-					network.Close()
+					if err := network.Close(); err != nil {
+						logger.Error(err, "failed to close network", "valkey", valkey.Name, "namespace", valkey.Namespace)
+					}
 				} else {
 					time.Sleep(time.Second * 2)
 					dial++
