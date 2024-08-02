@@ -787,7 +787,9 @@ fi
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (replicas)", valkey.Namespace, valkey.Name))
-		r.balanceNodes(ctx, valkey, oldnodes, *sts.Spec.Replicas)
+		if err := r.balanceNodes(ctx, valkey, oldnodes, *sts.Spec.Replicas); err != nil {
+			return err
+		}
 	}
 
 	return nil
