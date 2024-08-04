@@ -25,8 +25,9 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-K8S_VERSION ?= 1.30.4
+K8S_VERSION ?= 1.30.3
 CILIUM_VERSION ?= 1.16.0
+CERTMANAGER_VERSION ?= 1.15.2
 
 V ?= 0
 ifeq ($(V), 1)
@@ -187,7 +188,10 @@ GOLANGCI_LINT_VERSION ?= v1.57.2
 
 .PHONY: minikube tunnel proxy
 minikube: ## Spool up a local minikube cluster for development
-	$QK8S_VERSION=$(K8S_VERSION) CILIUM_VERSION=$(CILIUM_VERSION) scripts/minikube.sh
+	$QK8S_VERSION=$(K8S_VERSION) \
+		CILIUM_VERSION=$(CILIUM_VERSION) \
+		CERTMANAGER_VERSION=$(CERTMANAGER_VERSION) \
+		scripts/minikube.sh
 
 tunnel: ## turn on minikube's tunnel to test ingress and get UI access
 	$Q$(MINIKUBE) tunnel -p north

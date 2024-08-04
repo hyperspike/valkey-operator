@@ -43,6 +43,7 @@ import (
 	hyperv1 "hyperspike.io/valkey-operator/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -87,6 +88,7 @@ var scripts embed.FS
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -119,6 +121,9 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	password, err := r.upsertSecret(ctx, valkey, true)
 	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.upsertPodDisruptionBudget(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := r.upsertStatefulSet(ctx, valkey); err != nil {
@@ -549,6 +554,47 @@ func getMasterNodes(valkey *hyperv1.Valkey) string {
 		nodes = append(nodes, valkey.Name+"-"+fmt.Sprint(i)+"."+valkey.Name+"-headless")
 	}
 	return strings.Join(nodes, " ")
+}
+
+func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting pod disruption budget", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MaxUnavailable: func(i intstr.IntOrString) *intstr.IntOrString { return &i }(intstr.FromInt(1)),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels(valkey),
+			},
+		},
+	}
+	if err := controllerutil.SetControllerReference(valkey, pdb, r.Scheme); err != nil {
+		return err
+	}
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, pdb)
+	if err != nil && errors.IsNotFound(err) {
+		if err := r.Create(ctx, pdb); err != nil {
+			logger.Error(err, "failed to create pod disruption budget", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("PodDisruptionBudget %s/%s is created", valkey.Namespace, valkey.Name))
+	} else if err != nil {
+		logger.Error(err, "failed to fetch pod disruption budget", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		return err
+	} else if err == nil && pdb.Spec.MaxUnavailable.IntVal != int32(1) {
+		pdb.Spec.MaxUnavailable = func(i intstr.IntOrString) *intstr.IntOrString { return &i }(intstr.FromInt(1))
+		if err := r.Update(ctx, pdb); err != nil {
+			logger.Error(err, "failed to update pod disruption budget", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {

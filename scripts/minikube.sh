@@ -100,22 +100,26 @@ data:
 	minikube kubectl  -p $name --  apply -f .cni-$name.yaml
 	minikube node add -p $name
 	minikube node add -p $name
-	sleep 15 #@TODO build a watch loop 
+	# sleep 15 #@TODO build a watch loop
+}
+
+addons() {
 	kubectl delete pod -l k8s-app=kube-dns -n kube-system
 	minikube addons enable registry -p north
 	# use the addon, but through a tunnel
-	minikube addons enable ingress  -p north
-	kubectl get svc -n ingress-nginx ingress-nginx-controller  -o yaml > .ingress.yaml
-	sed -i'' -e 's/NodePort/LoadBalancer/' -e '/allocateNode/d' .ingress.yaml
-	kubectl apply -f .ingress.yaml
-	kubectl apply -f scripts/ingress.yaml
-	kubectl delete po -n ingress-nginx -l app.kubernetes.io/component=controller
+	#minikube addons enable ingress  -p north
+	#kubectl get svc -n ingress-nginx ingress-nginx-controller  -o yaml > .ingress.yaml
+	#sed -i'' -e 's/NodePort/LoadBalancer/' -e '/allocateNode/d' .ingress.yaml
+	#kubectl apply -f .ingress.yaml
+	#kubectl apply -f scripts/ingress.yaml
+	#kubectl delete po -n ingress-nginx -l app.kubernetes.io/component=controller
 	kubectl delete pod -l k8s-app=kube-dns -n kube-system
 	kubectl get deployment -n kube-system coredns -o yaml > .coredns.yaml
 	sed -i'' -e 's/\(replicas:\).*/\1\ 2/' .coredns.yaml
 	kubectl apply -f .coredns.yaml
-	kubectl apply -f $SCRIPT_DIR/postgres-operator.yaml
+	#kubectl apply -f $SCRIPT_DIR/postgres-operator.yaml
 	kubectl apply -f $SCRIPT_DIR/minikube-pvc-hack.yaml
+	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v${CERTMANAGER_VERSION}/cert-manager.yaml
 }
 
 helm repo add cilium https://helm.cilium.io/ || true
@@ -123,3 +127,5 @@ helm repo update cilium
 helm pull cilium/cilium --untar
 
 bootcluster north 1 10.60.0.0/16 10.96.0.0/16
+
+addons

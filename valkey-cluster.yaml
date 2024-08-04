@@ -9,8 +9,8 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 spec:
   podSelector:
     matchLabels:
@@ -26,6 +26,8 @@ spec:
     - ports:
         - port: 6379
         - port: 16379
+        # Allow prometheus scrapes for metrics
+        - port: 9121
 ---
 # Source: valkey-cluster/templates/poddisruptionbudget.yaml
 apiVersion: policy/v1beta1
@@ -37,8 +39,8 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 spec:
   maxUnavailable: 1
   selector:
@@ -58,8 +60,8 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 automountServiceAccountToken: false
 ---
 # Source: valkey-cluster/templates/secret.yaml
@@ -72,11 +74,11 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 type: Opaque
 data:
-  valkey-password: "NndEVGFBcERkWA=="
+  valkey-password: "TThSNEV4TFFCTA=="
 ---
 # Source: valkey-cluster/templates/configmap.yaml
 apiVersion: v1
@@ -88,8 +90,8 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 data:
   valkey-default.conf: |-
     # Valkey configuration file example.
@@ -2363,8 +2365,8 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 data:
   ping_readiness_local.sh: |-
     #!/bin/sh
@@ -2437,8 +2439,8 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 spec:
   type: ClusterIP
   clusterIP: None
@@ -2454,6 +2456,29 @@ spec:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/name: valkey-cluster
 ---
+# Source: valkey-cluster/templates/metrics-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-cluster-metrics
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: valkey-cluster
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: valkey-cluster
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
+    app.kubernetes.io/component: "metrics"
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 9121
+      targetPort: http-metrics
+  selector:
+    app.kubernetes.io/instance: valkey-cluster
+    app.kubernetes.io/name: valkey-cluster
+---
 # Source: valkey-cluster/templates/valkey-svc.yaml
 apiVersion: v1
 kind: Service
@@ -2464,8 +2489,8 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 spec:
   type: ClusterIP
   sessionAffinity: None
@@ -2489,8 +2514,8 @@ metadata:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.5
-    helm.sh/chart: valkey-cluster-0.1.6
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
 spec:
   updateStrategy:
     rollingUpdate:
@@ -2500,7 +2525,7 @@ spec:
     matchLabels:
       app.kubernetes.io/instance: valkey-cluster
       app.kubernetes.io/name: valkey-cluster
-  replicas: 6
+  replicas: 3
   serviceName: valkey-cluster-headless
   podManagementPolicy: Parallel
   template:
@@ -2509,12 +2534,14 @@ spec:
         app.kubernetes.io/instance: valkey-cluster
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: valkey-cluster
-        app.kubernetes.io/version: 7.2.5
-        helm.sh/chart: valkey-cluster-0.1.6
+        app.kubernetes.io/version: 7.2.6
+        helm.sh/chart: valkey-cluster-0.1.8
       annotations:
-        checksum/scripts: a13fab32f2191f02d2555bfdc3aa2345d29ed3af1ed37c17194a0283c1ff6b80
-        checksum/secret: 164958db9f2f829f97dc7a2e4544df2c3be86e3167bcf08b28d2298fe8fb6047
-        checksum/config: 8a6600ab54d9e58283f30604d5d59c76911e924733469ad541e085d3d76ea038
+        checksum/scripts: b204c1d5491035498ad8651133e689c4b01520dcd8f32f44f194dda55a4de9a3
+        checksum/secret: 487ef06fdc43e501ccb69dc3fe987b12b9161433c828824d1989b189df571483
+        checksum/config: b6d973afb828078566848d0309cc59794c031e370e6e8bca59a70745a6a48f31
+        prometheus.io/port: '9121'
+        prometheus.io/scrape: "true"
     spec:
       hostNetwork: false
       enableServiceLinks: false
@@ -2542,7 +2569,7 @@ spec:
           
       containers:
         - name: valkey-cluster
-          image: docker.io/bitnami/valkey-cluster:7.2.5-debian-12-r4
+          image: docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0
           imagePullPolicy: "IfNotPresent"
           securityContext:
             allowPrivilegeEscalation: false
@@ -2569,7 +2596,7 @@ spec:
               pod_index="${pod_index[-1]}"
               if [[ "$pod_index" == "0" ]]; then
                 export VALKEY_CLUSTER_CREATOR="yes"
-                export VALKEY_CLUSTER_REPLICAS="1"
+                export VALKEY_CLUSTER_REPLICAS="0"
               fi
               /opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh
           env:
@@ -2578,7 +2605,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: VALKEY_NODES
-              value: "valkey-cluster-0.valkey-cluster-headless valkey-cluster-1.valkey-cluster-headless valkey-cluster-2.valkey-cluster-headless valkey-cluster-3.valkey-cluster-headless valkey-cluster-4.valkey-cluster-headless valkey-cluster-5.valkey-cluster-headless "
+              value: "valkey-cluster-0.valkey-cluster-headless valkey-cluster-1.valkey-cluster-headless valkey-cluster-2.valkey-cluster-headless "
             - name: REDISCLI_AUTH
               valueFrom:
                 secretKeyRef:
@@ -2654,6 +2681,53 @@ spec:
             - name: empty-dir
               mountPath: /tmp
               subPath: tmp-dir
+        - name: metrics
+          image: docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+            seLinuxOptions: null
+            seccompProfile:
+              type: RuntimeDefault
+          command:
+            - /bin/bash
+            - -c
+            - |
+              valkey_exporter
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: VALKEY_ALIAS
+              value: valkey-cluster
+            - name: VALKEY_ADDR
+              value: "valkey://127.0.0.1:6379"
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: valkey-cluster
+                  key: valkey-password
+            - name: VALKEY_EXPORTER_WEB_LISTEN_ADDRESS
+              value: :9121
+          ports:
+            - name: http-metrics
+              containerPort: 9121
+          resources:
+            limits:
+              cpu: 150m
+              ephemeral-storage: 2Gi
+              memory: 192Mi
+            requests:
+              cpu: 100m
+              ephemeral-storage: 50Mi
+              memory: 128Mi
       volumes:
         - name: scripts
           configMap:
@@ -2676,3 +2750,27 @@ spec:
         resources:
           requests:
             storage: "8Gi"
+---
+# Source: valkey-cluster/templates/metrics-prometheus.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: valkey-cluster
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: valkey-cluster
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: valkey-cluster
+    app.kubernetes.io/version: 7.2.6
+    helm.sh/chart: valkey-cluster-0.1.8
+spec:
+  endpoints:
+  - port: metrics
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: valkey-cluster
+      app.kubernetes.io/name: valkey-cluster
+      app.kubernetes.io/component: "metrics"
+  namespaceSelector:
+    matchNames:
+    - default
