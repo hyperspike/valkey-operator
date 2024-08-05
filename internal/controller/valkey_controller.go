@@ -142,6 +142,9 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.checkState(ctx, valkey, password); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
 	}
+	if err := r.balanceNodes(ctx, valkey); err != nil {
+		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -496,7 +499,7 @@ func removePort(addr string) string {
 	return addr
 }
 
-func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Valkey, oldnodes, newnodes int32) error {
+func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
 	password, err := r.upsertSecret(ctx, valkey, true)
@@ -516,9 +519,6 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	}
 
 	logger.Info("balancing nodes", "valkey", valkey.Name, "namespace", valkey.Namespace)
-	if oldnodes == newnodes {
-		return nil
-	}
 	nodes, err := vClient.Do(ctx, vClient.B().ClusterNodes().Build()).ToString()
 	if err != nil {
 		logger.Error(err, "failed to get nodes", "valkey", valkey.Name, "namespace", valkey.Namespace)
@@ -540,6 +540,9 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		//namespace := strings.Split(addrs[0], ".")[1]
 		ids[hostname] = id
 	}
+	oldnodes := len(ids)
+	newnodes := int(valkey.Spec.MasterNodes)
+
 	if oldnodes > newnodes {
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Scaling in cluster nodes %s/%s", valkey.Namespace, valkey.Name))
 		for i := oldnodes - 1; i >= newnodes; i-- { // remove nodes
@@ -1051,7 +1054,6 @@ fi
 	}
 
 	if *sts.Spec.Replicas != valkey.Spec.MasterNodes {
-		oldnodes := *sts.Spec.Replicas
 		sts.Spec.Replicas = &valkey.Spec.MasterNodes
 		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getMasterNodes(valkey)
 		if err := r.Update(ctx, sts); err != nil {
@@ -1059,9 +1061,6 @@ fi
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (replicas)", valkey.Namespace, valkey.Name))
-		if err := r.balanceNodes(ctx, valkey, oldnodes, *sts.Spec.Replicas); err != nil {
-			return err
-		}
 	}
 
 	return nil
