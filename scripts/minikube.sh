@@ -25,7 +25,7 @@ data:
   description: This CM intentioanlly left blank to fake out minikube/kubeadm
 " > blank.yaml
 	minikube start --memory 4g --container-runtime=cri-o \
-		--kubernetes-version=v${k8s_version} \
+		--kubernetes-version=v${K8S_VERSION} \
 		--extra-config kubeadm.pod-network-cidr=$podcidr \
 		--service-cluster-ip-range $servicecidr \
 		--extra-config kubeadm.skip-phases=addon/kube-proxy \
@@ -117,7 +117,7 @@ bootcluster_macos() {
 	servicecidr=$4
 
 	minikube start --memory 4g --container-runtime=cri-o \
-		--kubernetes-version=v${k8s_version} \
+		--kubernetes-version=v${K8S_VERSION} \
 		--extra-config kubeadm.pod-network-cidr=$podcidr \
 		--service-cluster-ip-range $servicecidr \
 		--network north-south \
