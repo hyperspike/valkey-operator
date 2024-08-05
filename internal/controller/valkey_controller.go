@@ -48,6 +48,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	Metrics = "metrics"
+)
+
 func init() {
 	buf := make([]byte, 1)
 	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
@@ -329,7 +333,7 @@ func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyp
 	logger.Info("upserting metrics service", "valkey", valkey.Name, "namespace", valkey.Namespace)
 
 	l := labels(valkey)
-	l["app.kubernetes.io/component"] = "metrics"
+	l["app.kubernetes.io/component"] = Metrics
 
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -378,9 +382,9 @@ func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyp
 	logger.Info("upserting prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
 
 	labelSelector := labels(valkey)
-	labelSelector["app.kubernetes.io/component"] = "metrics"
+	labelSelector["app.kubernetes.io/component"] = Metrics
 	l := labels(valkey)
-	l["app.kubernetes.io/component"] = "metrics"
+	l["app.kubernetes.io/component"] = Metrics
 	for k, v := range valkey.Spec.PrometheusLabels {
 		l[k] = v
 	}
@@ -717,7 +721,7 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 
 func exporter(valkey *hyperv1.Valkey) corev1.Container {
 	return corev1.Container{
-		Name:            "metrics",
+		Name:            Metrics,
 		Image:           "docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2",
 		ImagePullPolicy: "IfNotPresent",
 		Ports: []corev1.ContainerPort{
