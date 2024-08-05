@@ -52,7 +52,6 @@ type ValkeySpec struct {
 	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
 
 	// Persistent volume claim
-	// +kubebuilder:default:=""
 	Storage corev1.PersistentVolumeClaim `json:"storage,omitempty"`
 }
 

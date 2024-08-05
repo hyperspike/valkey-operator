@@ -75,6 +75,11 @@ spec:
                 default: false
                 description: Enable prometheus
                 type: boolean
+              prometheusLabels:
+                additionalProperties:
+                  type: string
+                description: Extra prometheus labels for operator targeting
+                type: object
               replicas:
                 default: 0
                 description: Number of replicas
@@ -85,7 +90,6 @@ spec:
                 description: Rootless mode
                 type: boolean
               storage:
-                default: ""
                 description: Persistent volume claim
                 properties:
                   apiVersion:
