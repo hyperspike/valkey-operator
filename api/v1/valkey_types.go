@@ -35,7 +35,7 @@ type ValkeySpec struct {
 
 	// Number of nodes
 	// +kubebuilder:default:=3
-	MasterNodes int32 `json:"masterNodes,omitempty"`
+	Nodes int32 `json:"nodes,omitempty"`
 
 	// Number of replicas
 	// +kubebuilder:default:=0

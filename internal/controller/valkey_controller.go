@@ -553,7 +553,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		ids[hostname] = id
 	}
 	oldnodes := len(ids)
-	newnodes := int(valkey.Spec.MasterNodes)
+	newnodes := int(valkey.Spec.Nodes)
 
 	if oldnodes > newnodes {
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Scaling in cluster nodes %s/%s", valkey.Namespace, valkey.Name))
@@ -670,9 +670,9 @@ func (r *ValkeyReconciler) waitForPod(ctx context.Context, name, namespace strin
 	return nil
 }
 
-func getMasterNodes(valkey *hyperv1.Valkey) string {
+func getNodeNames(valkey *hyperv1.Valkey) string {
 	var nodes []string
-	for i := 0; i < int(valkey.Spec.MasterNodes)*(int(valkey.Spec.Replicas)+1); i++ {
+	for i := 0; i < int(valkey.Spec.Nodes)*(int(valkey.Spec.Replicas)+1); i++ {
 		nodes = append(nodes, valkey.Name+"-"+fmt.Sprint(i)+"."+valkey.Name+"-headless")
 	}
 	return strings.Join(nodes, " ")
@@ -805,7 +805,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Labels:    labels(valkey),
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: func(i int32) *int32 { return &i }(valkey.Spec.MasterNodes * (valkey.Spec.Replicas + 1)),
+			Replicas: func(i int32) *int32 { return &i }(valkey.Spec.Nodes * (valkey.Spec.Replicas + 1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels(valkey),
 			},
@@ -910,7 +910,7 @@ fi
 								},
 								{
 									Name:  "VALKEY_NODES",
-									Value: getMasterNodes(valkey),
+									Value: getNodeNames(valkey),
 								},
 								{
 									Name: "REDISCLI_AUTH",
@@ -1079,9 +1079,9 @@ fi
 		return err
 	}
 
-	if *sts.Spec.Replicas != valkey.Spec.MasterNodes {
-		sts.Spec.Replicas = &valkey.Spec.MasterNodes
-		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getMasterNodes(valkey)
+	if *sts.Spec.Replicas != valkey.Spec.Nodes {
+		sts.Spec.Replicas = &valkey.Spec.Nodes
+		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getNodeNames(valkey)
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
