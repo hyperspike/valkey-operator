@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	hyperv1 "hyperspike.io/valkey-operator/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -119,6 +120,15 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.upsertServiceAccount(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
+	if valkey.Spec.Prometheus {
+		if err := r.upsertServiceMonitor(ctx, valkey); err != nil {
+			return ctrl.Result{}, err
+		}
+		if err := r.upsertMetricsService(ctx, valkey); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	password, err := r.upsertSecret(ctx, valkey, true)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -305,6 +315,103 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 	} else {
 		r.Recorder.Event(valkey, "Normal", "Created",
 			fmt.Sprintf("Service %s/%s is created", valkey.Namespace, valkey.Name+"-headless"))
+	}
+	return nil
+}
+
+func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting metrics service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+
+	l := labels(valkey)
+	l["app.kubernetes.io/component"] = "metrics"
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name + "-metrics",
+			Namespace: valkey.Namespace,
+			Labels:    l,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: "None",
+			// Omit the publishNotReadyAddresses field as this is metrics!
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "tcp-valkey-metrics",
+					Port:       9121,
+					TargetPort: intstr.FromString("tcp-valkey-metrics"),
+					Protocol:   corev1.ProtocolTCP,
+				},
+			},
+			Selector: labels(valkey),
+		},
+	}
+	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
+		return err
+	}
+	if err := r.Create(ctx, svc); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, svc); err != nil {
+				logger.Error(err, "failed to update metrics service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				return err
+			}
+		} else {
+			logger.Error(err, "failed to create metrics service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Service %s/%s is created", valkey.Namespace, valkey.Name+"-metrics"))
+	}
+	return nil
+}
+
+func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+
+	l := labels(valkey)
+	l["app.kubernetes.io/component"] = "metrics"
+	for k, v := range valkey.Spec.PrometheusLabels {
+		l[k] = v
+	}
+
+	sm := &monitoringv1.ServiceMonitor{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
+		},
+		Spec: monitoringv1.ServiceMonitorSpec{
+			Selector: metav1.LabelSelector{
+				MatchLabels: labels(valkey),
+			},
+			Endpoints: []monitoringv1.Endpoint{
+				{
+					Port: "tcp-valkey-metrics",
+				},
+			},
+		},
+	}
+	if err := controllerutil.SetControllerReference(valkey, sm, r.Scheme); err != nil {
+		return err
+	}
+	if err := r.Create(ctx, sm); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, sm); err != nil {
+				logger.Error(err, "failed to update prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				return err
+			}
+		} else {
+			logger.Error(err, "failed to create prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("ServiceMonitor %s/%s is created", valkey.Namespace, valkey.Name))
 	}
 	return nil
 }
@@ -861,6 +968,70 @@ fi
 				},
 			},
 		},
+	}
+	if valkey.Spec.Prometheus {
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, corev1.Container{
+			Name:            "metrics",
+			Image:           "docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2",
+			ImagePullPolicy: "IfNotPresent",
+			Ports: []corev1.ContainerPort{
+				{
+					Name:          "tcp-valkey-metrics",
+					ContainerPort: 9121,
+				},
+			},
+			Env: []corev1.EnvVar{
+				{
+					Name:  "VALKEY_ADDR",
+					Value: "valkey://127.0.0.1:6379",
+				},
+				{
+					Name: "VALKEY_PASSWORD",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							Key: "password",
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: valkey.Name,
+							},
+						},
+					},
+				},
+				{
+					Name:  "VALKEY_EXPORTER_WEB_LISTEN_ADDRESS",
+					Value: ":9121",
+				},
+				{
+					Name:  "VALKY_ALIAS",
+					Value: valkey.Name,
+				},
+				{
+					Name:  "BITNAMI_DEBUG",
+					Value: "false",
+				},
+			},
+			Command: []string{
+				"/bin/bash",
+				"-c",
+				"valkey_exporter",
+			},
+			SecurityContext: &corev1.SecurityContext{
+				AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
+				Capabilities: &corev1.Capabilities{
+					Drop: []corev1.Capability{
+						"ALL",
+					},
+				},
+				Privileged:             func(b bool) *bool { return &b }(false),
+				ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
+				RunAsNonRoot:           func(b bool) *bool { return &b }(true),
+				RunAsUser:              func(i int64) *int64 { return &i }(1001),
+				RunAsGroup:             func(i int64) *int64 { return &i }(1001),
+				SELinuxOptions:         &corev1.SELinuxOptions{},
+				SeccompProfile: &corev1.SeccompProfile{
+					Type: "RuntimeDefault",
+				},
+			},
+		})
 	}
 	if err := controllerutil.SetControllerReference(valkey, sts, r.Scheme); err != nil {
 		return err

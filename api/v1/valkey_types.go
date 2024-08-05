@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -47,6 +48,12 @@ type ValkeySpec struct {
 	// Enable prometheus
 	// +kubebuilder:default:=false
 	Prometheus bool `json:"prometheus,omitempty"`
+	// Extra prometheus labels for operator targetting
+	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
+
+	// Persistent volume claim
+	// +kubebuilder:default:=""
+	Storage corev1.PersistentVolumeClaim `json:"storage,omitempty"`
 }
 
 // ValkeyStatus defines the observed state of Valkey
