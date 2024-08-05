@@ -90,6 +90,7 @@ var scripts embed.FS
 // +kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -342,9 +343,9 @@ func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyp
 			// Omit the publishNotReadyAddresses field as this is metrics!
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "tcp-valkey-metrics",
+					Name:       "valkey-metrics",
 					Port:       9121,
-					TargetPort: intstr.FromString("tcp-valkey-metrics"),
+					TargetPort: intstr.FromString("valkey-metrics"),
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},
@@ -376,6 +377,8 @@ func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyp
 
 	logger.Info("upserting prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
 
+	labelSelector := labels(valkey)
+	labelSelector["app.kubernetes.io/component"] = "metrics"
 	l := labels(valkey)
 	l["app.kubernetes.io/component"] = "metrics"
 	for k, v := range valkey.Spec.PrometheusLabels {
@@ -386,15 +389,15 @@ func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyp
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
-			Labels:    labels(valkey),
+			Labels:    l,
 		},
 		Spec: monitoringv1.ServiceMonitorSpec{
 			Selector: metav1.LabelSelector{
-				MatchLabels: labels(valkey),
+				MatchLabels: labelSelector,
 			},
 			Endpoints: []monitoringv1.Endpoint{
 				{
-					Port: "tcp-valkey-metrics",
+					Port: "valkey-metrics",
 				},
 			},
 		},
@@ -402,19 +405,23 @@ func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyp
 	if err := controllerutil.SetControllerReference(valkey, sm, r.Scheme); err != nil {
 		return err
 	}
-	if err := r.Create(ctx, sm); err != nil {
-		if errors.IsAlreadyExists(err) {
-			if err := r.Update(ctx, sm); err != nil {
-				logger.Error(err, "failed to update prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
-				return err
-			}
-		} else {
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, sm)
+	if err != nil && errors.IsNotFound(err) {
+		if err := r.Create(ctx, sm); err != nil {
 			logger.Error(err, "failed to create prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err
 		}
-	} else {
 		r.Recorder.Event(valkey, "Normal", "Created",
 			fmt.Sprintf("ServiceMonitor %s/%s is created", valkey.Namespace, valkey.Name))
+	} else if err != nil {
+		logger.Error(err, "failed to fetch prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		return err
+	} else if err == nil && false { // detect changes
+		// updates here
+		if err := r.Update(ctx, sm); err != nil {
+			logger.Error(err, "failed to update prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
 	}
 	return nil
 }
@@ -535,6 +542,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		addrs, err := net.LookupAddr(addr)
 		if err != nil {
 			logger.Error(err, "failed to lookup addr", "valkey", valkey.Name, "namespace", valkey.Namespace, "addr", addr)
+			continue
 		}
 		hostname := strings.Split(addrs[0], ".")[0]
 		//namespace := strings.Split(addrs[0], ".")[1]
@@ -707,6 +715,70 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 	return nil
 }
 
+func exporter(valkey *hyperv1.Valkey) corev1.Container {
+	return corev1.Container{
+		Name:            "metrics",
+		Image:           "docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2",
+		ImagePullPolicy: "IfNotPresent",
+		Ports: []corev1.ContainerPort{
+			{
+				Name:          "valkey-metrics",
+				ContainerPort: 9121,
+			},
+		},
+		Env: []corev1.EnvVar{
+			{
+				Name:  "VALKEY_ADDR",
+				Value: "valkey://127.0.0.1:6379",
+			},
+			{
+				Name: "VALKEY_PASSWORD",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						Key: "password",
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: valkey.Name,
+						},
+					},
+				},
+			},
+			{
+				Name:  "VALKEY_EXPORTER_WEB_LISTEN_ADDRESS",
+				Value: ":9121",
+			},
+			{
+				Name:  "VALKY_ALIAS",
+				Value: valkey.Name,
+			},
+			{
+				Name:  "BITNAMI_DEBUG",
+				Value: "false",
+			},
+		},
+		Command: []string{
+			"/bin/bash",
+			"-c",
+			"redis_exporter", // this seems liable to change
+		},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{
+					"ALL",
+				},
+			},
+			Privileged:             func(b bool) *bool { return &b }(false),
+			ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
+			RunAsNonRoot:           func(b bool) *bool { return &b }(true),
+			RunAsUser:              func(i int64) *int64 { return &i }(1001),
+			RunAsGroup:             func(i int64) *int64 { return &i }(1001),
+			SELinuxOptions:         &corev1.SELinuxOptions{},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: "RuntimeDefault",
+			},
+		},
+	}
+}
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -973,68 +1045,7 @@ fi
 		},
 	}
 	if valkey.Spec.Prometheus {
-		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, corev1.Container{
-			Name:            "metrics",
-			Image:           "docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2",
-			ImagePullPolicy: "IfNotPresent",
-			Ports: []corev1.ContainerPort{
-				{
-					Name:          "tcp-valkey-metrics",
-					ContainerPort: 9121,
-				},
-			},
-			Env: []corev1.EnvVar{
-				{
-					Name:  "VALKEY_ADDR",
-					Value: "valkey://127.0.0.1:6379",
-				},
-				{
-					Name: "VALKEY_PASSWORD",
-					ValueFrom: &corev1.EnvVarSource{
-						SecretKeyRef: &corev1.SecretKeySelector{
-							Key: "password",
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: valkey.Name,
-							},
-						},
-					},
-				},
-				{
-					Name:  "VALKEY_EXPORTER_WEB_LISTEN_ADDRESS",
-					Value: ":9121",
-				},
-				{
-					Name:  "VALKY_ALIAS",
-					Value: valkey.Name,
-				},
-				{
-					Name:  "BITNAMI_DEBUG",
-					Value: "false",
-				},
-			},
-			Command: []string{
-				"/bin/bash",
-				"-c",
-				"valkey_exporter",
-			},
-			SecurityContext: &corev1.SecurityContext{
-				AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
-				Capabilities: &corev1.Capabilities{
-					Drop: []corev1.Capability{
-						"ALL",
-					},
-				},
-				Privileged:             func(b bool) *bool { return &b }(false),
-				ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
-				RunAsNonRoot:           func(b bool) *bool { return &b }(true),
-				RunAsUser:              func(i int64) *int64 { return &i }(1001),
-				RunAsGroup:             func(i int64) *int64 { return &i }(1001),
-				SELinuxOptions:         &corev1.SELinuxOptions{},
-				SeccompProfile: &corev1.SeccompProfile{
-					Type: "RuntimeDefault",
-				},
-			},
-		})
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, exporter(valkey))
 	}
 	if err := controllerutil.SetControllerReference(valkey, sts, r.Scheme); err != nil {
 		return err
@@ -1061,6 +1072,14 @@ fi
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (replicas)", valkey.Namespace, valkey.Name))
+	}
+	if valkey.Spec.Prometheus && len(sts.Spec.Template.Spec.Containers) == 1 {
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, exporter(valkey))
+		if err := r.Update(ctx, sts); err != nil {
+			logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (exporter)", valkey.Namespace, valkey.Name))
 	}
 
 	return nil
