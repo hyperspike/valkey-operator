@@ -743,6 +743,17 @@ func exporter(valkey *hyperv1.Valkey) corev1.Container {
 				},
 			},
 			{
+				Name: "REDIS_PASSWORD",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						Key: "password",
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: valkey.Name,
+						},
+					},
+				},
+			},
+			{
 				Name:  "VALKEY_EXPORTER_WEB_LISTEN_ADDRESS",
 				Value: ":9121",
 			},
