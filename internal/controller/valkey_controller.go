@@ -510,7 +510,7 @@ func removePort(addr string) string {
 	return addr
 }
 
-func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Valkey) error {
+func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint: gocyclo
 	logger := log.FromContext(ctx)
 
 	password, err := r.upsertSecret(ctx, valkey, true)
@@ -583,7 +583,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	}
 	for ipId, id := range ids {
 		found := false
-		for ipPod, _ := range pods {
+		for ipPod := range pods {
 			if ipId == ipPod {
 				found = true
 				break
@@ -602,7 +602,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	}
 	for ipPod, pod := range pods {
 		found := false
-		for ipId, _ := range ids {
+		for ipId := range ids {
 			if ipPod == ipId {
 				found = true
 				break
@@ -671,6 +671,7 @@ func (r *ValkeyReconciler) getPodIps(ctx context.Context, valkey *hyperv1.Valkey
 	return ret, nil
 }
 
+/* save for later
 func (r *ValkeyReconciler) getPodIp(ctx context.Context, name, namespace string) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -714,6 +715,7 @@ func (r *ValkeyReconciler) waitForPod(ctx context.Context, name, namespace strin
 	}
 	return nil
 }
+*/
 
 func getNodeNames(valkey *hyperv1.Valkey) string {
 	var nodes []string
