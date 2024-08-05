@@ -48,7 +48,7 @@ type ValkeySpec struct {
 	// Enable prometheus
 	// +kubebuilder:default:=false
 	Prometheus bool `json:"prometheus,omitempty"`
-	// Extra prometheus labels for operator targetting
+	// Extra prometheus labels for operator targeting
 	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
 
 	// Persistent volume claim
