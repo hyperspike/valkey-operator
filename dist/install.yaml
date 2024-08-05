@@ -874,7 +874,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/hyperspike/valkey-operator:v0.0.5
+        image: ghcr.io/hyperspike/valkey-operator:v0.0.6
         livenessProbe:
           httpGet:
             path: /healthz
