@@ -74,7 +74,7 @@ spec:
                 default: docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0
                 description: Image to use
                 type: string
-              masterNodes:
+              nodes:
                 default: 3
                 description: Number of nodes
                 format: int32
@@ -740,6 +740,18 @@ rules:
   - patch
   - update
 - apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - servicemonitors
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - policy
   resources:
   - poddisruptionbudgets
@@ -862,7 +874,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: localhost:5000/controller:3
+        image: ghcr.io/hyperspike/valkey-operator:v0.0.5
         livenessProbe:
           httpGet:
             path: /healthz

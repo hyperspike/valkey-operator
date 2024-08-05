@@ -186,7 +186,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.15.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
 
-.PHONY: minikube tunnel proxy
+.PHONY: minikube tunnel registry-proxy prometheus-proxy
 minikube: ## Spool up a local minikube cluster for development
 	$QK8S_VERSION=$(K8S_VERSION) \
 		CILIUM_VERSION=$(CILIUM_VERSION) \
@@ -196,8 +196,10 @@ minikube: ## Spool up a local minikube cluster for development
 tunnel: ## turn on minikube's tunnel to test ingress and get UI access
 	$Q$(MINIKUBE) tunnel -p north
 
-proxy: ## turn on a port to push locally built containers into the cluster
+registry-proxy: ## turn on a port to push locally built containers into the cluster
 	$Q$(KUBECTL) port-forward --namespace kube-system service/registry 5000:80
+prometheus-proxy: ## turn on a port to validate prometheus metrics
+	$Q$(KUBECTL) port-forward --namespace default svc/prometheus 9090:9090
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.

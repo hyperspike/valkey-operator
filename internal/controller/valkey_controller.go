@@ -144,11 +144,11 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.upsertStatefulSet(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.checkState(ctx, valkey, password); err != nil {
-		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
-	}
 	if err := r.balanceNodes(ctx, valkey); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
+	}
+	if err := r.checkState(ctx, valkey, password); err != nil {
+		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -518,7 +518,8 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		return err
 	}
 
-	vClient, err := valkeyClient.NewClient(valkeyClient.ClientOption{InitAddress: []string{valkey.Name + "." + valkey.Namespace + ".svc:6379"}, Password: password})
+	// connect to the first node!
+	vClient, err := valkeyClient.NewClient(valkeyClient.ClientOption{InitAddress: []string{valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc:6379"}, Password: password})
 	if err != nil {
 		logger.Error(err, "failed to create valkey client", "valkey", valkey.Name, "namespace", valkey.Namespace)
 		return err
@@ -543,47 +544,74 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		line := strings.Split(node, " ")
 		id := strings.ReplaceAll(line[0], "txt:", "")
 		addr := removePort(line[1])
-		addrs, err := net.LookupAddr(addr)
-		if err != nil {
-			logger.Error(err, "failed to lookup addr", "valkey", valkey.Name, "namespace", valkey.Namespace, "addr", addr)
-			continue
-		}
-		hostname := strings.Split(addrs[0], ".")[0]
-		//namespace := strings.Split(addrs[0], ".")[1]
-		ids[hostname] = id
-	}
-	oldnodes := len(ids)
-	newnodes := int(valkey.Spec.Nodes)
-
-	if oldnodes > newnodes {
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Scaling in cluster nodes %s/%s", valkey.Namespace, valkey.Name))
-		for i := oldnodes - 1; i >= newnodes; i-- { // remove nodes
-			if _, ok := ids[fmt.Sprintf("%s-%d", valkey.Name, i)]; !ok {
-				logger.Info("node not found", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", fmt.Sprintf("%s-%d", valkey.Name, i))
+		/*
+			addrs, err := net.LookupAddr(addr)
+			if err != nil {
+				logger.Error(err, "failed to lookup addr", "valkey", valkey.Name, "namespace", valkey.Namespace, "addr", addr)
 				continue
 			}
-			if err := vClient.Do(ctx, vClient.B().ClusterForget().NodeId(ids[fmt.Sprintf("%s-%d", valkey.Name, i)]).Build()).Error(); err != nil {
-				logger.Error(err, "failed to forget node", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			ip := strings.Split(addrs[0], ".")[0]
+		*/
+		//namespace := strings.Split(addrs[0], ".")[1]
+		ids[addr] = id
+	}
+	pods := map[string]string{}
+	var tries int
+	for {
+		if len(pods) != int(valkey.Spec.Nodes) {
+			pods, err = r.getPodIps(ctx, valkey)
+			if err != nil {
+				logger.Error(err, "failed to get pod ips", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return err
+			}
+			time.Sleep(time.Second * 2)
+			tries++
+			if tries > 15 {
+				err := fmt.Errorf("timeout waiting for pods")
+				logger.Error(err, "failed to get pod ips")
+				return err
+			}
+		} else {
+			break
+		}
+	}
+
+	myid, err := vClient.Do(ctx, vClient.B().ClusterMyid().Build()).ToString()
+	if err != nil {
+		logger.Error(err, "failed to get myid")
+		return err
+	}
+	for ipId, id := range ids {
+		found := false
+		for ipPod, _ := range pods {
+			if ipId == ipPod {
+				found = true
+				break
 			}
 		}
-	} else {
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Scaling out cluster nodes %s/%s", valkey.Namespace, valkey.Name))
-		for i := oldnodes; i < newnodes; i++ { // add nodes
-			name := fmt.Sprintf("%s-%d", valkey.Name, i)
-			logger.Info("adding node", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", name)
-			if err := r.waitForPod(ctx, name, valkey.Namespace); err != nil {
-				logger.Error(err, "failed to wait for pod", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", name)
+		if !found {
+			if myid == id {
+				continue
+			}
+			if err := vClient.Do(ctx, vClient.B().ClusterForget().NodeId(id).Build()).Error(); err != nil {
+				logger.Error(err, "failed to forget node "+ipId+"/"+id)
 				return err
 			}
-			addr, err := r.getPodIp(ctx, name, valkey.Namespace)
-			if err != nil {
-				logger.Error(err, "failed to lookup host", "valkey", valkey.Name, "namespace", valkey.Namespace)
-				return err
+			r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Node %s removed from %s/%s", ipId, valkey.Namespace, valkey.Name))
+		}
+	}
+	for ipPod, pod := range pods {
+		found := false
+		for ipId, _ := range ids {
+			if ipPod == ipId {
+				found = true
+				break
 			}
+		}
+		if !found {
 			var dial int
 			for {
-				network, err := net.Dial("tcp", addr+":6379")
+				network, err := net.Dial("tcp", ipPod+":6379")
 				if err != nil {
 					if err := network.Close(); err != nil {
 						logger.Error(err, "failed to close network", "valkey", valkey.Name, "namespace", valkey.Namespace)
@@ -615,15 +643,32 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 				logger.Error(err, "failed to dial", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				continue
 			}
-			res, err := vClient.Do(ctx, vClient.B().ClusterMeet().Ip(addr).Port(6379).Build()).ToString()
-			logger.Info("meeting node "+res, "valkey", valkey.Name, "namespace", valkey.Namespace, "node", name)
+			res, err := vClient.Do(ctx, vClient.B().ClusterMeet().Ip(ipPod).Port(6379).Build()).ToString()
+			logger.Info("meeting node "+res, "valkey", valkey.Name, "namespace", valkey.Namespace, "node", pod)
 			if err != nil {
-				logger.Error(err, "failed to meet node", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", name)
+				logger.Error(err, "failed to meet node", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", pod)
 				return err
 			}
+			r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Node %s added to %s/%s", pod, valkey.Namespace, valkey.Name))
 		}
 	}
+
 	return nil
+}
+
+func (r *ValkeyReconciler) getPodIps(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
+	logger := log.FromContext(ctx)
+
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+		logger.Error(err, "failed to list pods", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		return nil, err
+	}
+	ret := map[string]string{}
+	for _, pod := range pods.Items {
+		ret[pod.Status.PodIP] = pod.Name
+	}
+	return ret, nil
 }
 
 func (r *ValkeyReconciler) getPodIp(ctx context.Context, name, namespace string) (string, error) {
