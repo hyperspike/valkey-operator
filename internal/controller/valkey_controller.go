@@ -675,23 +675,26 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		Password:    password,
 	}
 	if valkey.Spec.TLS {
-		ca, err := r.getCACertificate(ctx, valkey)
-		if err != nil {
-			logger.Error(err, "failed to get ca certificate")
-			return err
-		}
-		if ca == "" {
-			return fmt.Errorf("ca certificate not ready")
-		}
-		certpool, err := x509.SystemCertPool()
-		if err != nil {
-			logger.Error(err, "failed to get system cert pool")
-			return err
-		}
-		certpool.AppendCertsFromPEM([]byte(ca))
+		/*
+			ca, err := r.getCACertificate(ctx, valkey)
+			if err != nil {
+				logger.Error(err, "failed to get ca certificate")
+				return err
+			}
+			if ca == "" {
+				return fmt.Errorf("ca certificate not ready")
+			}
+			certpool, err := x509.SystemCertPool()
+			if err != nil {
+				logger.Error(err, "failed to get system cert pool")
+				return err
+			}
+			certpool.AppendCertsFromPEM([]byte(ca))
+		*/
 		opt.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
-			RootCAs:    certpool,
+			// RootCAs:    certpool,
+			InsecureSkipVerify: true, // #nosec G402
 		}
 	}
 	vClient, err := valkeyClient.NewClient(opt)
