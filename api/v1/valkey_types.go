@@ -45,11 +45,25 @@ type ValkeySpec struct {
 	// +kubebuilder:default:=true
 	Rootless bool `json:"rootless,omitempty"`
 
+	// TLS Support
+	// +kubebuilder:default:=false
+	TLS bool `json:"tls,omitempty"`
+	// Certificate Issuer
+	CertIssuer string `json:"certIssuer,omitempty"`
+	// Certificate Issuer Type
+	// +kubebuilder:default:="ClusterIssuer"
+	// +kubebuilder:validation:Enum=ClusterIssuer;Issuer
+	CertIssuerType string `json:"certIssuerType,omitempty"`
+
 	// Enable prometheus
 	// +kubebuilder:default:=false
 	Prometheus bool `json:"prometheus,omitempty"`
 	// Extra prometheus labels for operator targeting
 	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
+
+	// Cluster Domain - used for DNS
+	// +kubebuilder:default:=cluster.local
+	ClusterDomain string `json:"clusterDomain,omitempty"`
 
 	// Persistent volume claim
 	Storage *corev1.PersistentVolumeClaim `json:"storage,omitempty"`

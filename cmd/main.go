@@ -34,6 +34,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	hyperspikeiov1 "hyperspike.io/valkey-operator/api/v1"
 	"hyperspike.io/valkey-operator/internal/controller"
@@ -50,6 +51,7 @@ func init() {
 
 	utilruntime.Must(hyperspikeiov1.AddToScheme(scheme))
 	utilruntime.Must(monitoringv1.AddToScheme(scheme))
+	utilruntime.Must(certv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
