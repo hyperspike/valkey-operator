@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"embed"
 	"fmt"
 	"io"
@@ -174,6 +175,38 @@ func labels(valkey *hyperv1.Valkey) map[string]string {
 	}
 }
 
+func (r *ValkeyReconciler) getCACertificate(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
+	logger := log.FromContext(ctx)
+
+	cert := &certv1.Certificate{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, cert); err != nil {
+		logger.Error(err, "failed to get ca certificate")
+		return "", err
+	}
+	if cert.Status.Conditions == nil {
+		return "", nil
+	}
+	good := false
+	for _, cond := range cert.Status.Conditions {
+		if cond.Type == certv1.CertificateConditionReady {
+			if cond.Status == cmetav1.ConditionTrue {
+				good = true
+				break
+			}
+		}
+	}
+	if !good {
+		return "", nil
+	}
+	tls := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: cert.Spec.SecretName}, tls)
+	if err != nil {
+		logger.Error(err, "failed to get tls secret")
+		return "", err
+	}
+	return string(tls.Data["ca.crt"]), nil
+}
+
 func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valkey, password string) error {
 	logger := log.FromContext(ctx)
 
@@ -182,10 +215,24 @@ func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valke
 		Password:    password,
 	}
 	if valkey.Spec.TLS {
+		ca, err := r.getCACertificate(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get ca certificate")
+			return err
+		}
+		if ca == "" {
+			return fmt.Errorf("ca certificate not ready")
+		}
+		certpool, err := x509.SystemCertPool()
+		if err != nil {
+			logger.Error(err, "failed to get system cert pool")
+			return err
+		}
+		certpool.AppendCertsFromPEM([]byte(ca))
 		opt.TLSConfig = &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: true,
-			ServerName:         valkey.Name + "." + valkey.Namespace + ".svc",
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    certpool,
+			ServerName: valkey.Name + "." + valkey.Namespace + ".svc",
 		}
 	}
 	vClient, err := valkeyClient.NewClient(opt)
@@ -628,9 +675,23 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		Password:    password,
 	}
 	if valkey.Spec.TLS {
+		ca, err := r.getCACertificate(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get ca certificate")
+			return err
+		}
+		if ca == "" {
+			return fmt.Errorf("ca certificate not ready")
+		}
+		certpool, err := x509.SystemCertPool()
+		if err != nil {
+			logger.Error(err, "failed to get system cert pool")
+			return err
+		}
+		certpool.AppendCertsFromPEM([]byte(ca))
 		opt.TLSConfig = &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: true,
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    certpool,
 		}
 	}
 	vClient, err := valkeyClient.NewClient(opt)
