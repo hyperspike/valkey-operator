@@ -52,7 +52,7 @@ type ValkeySpec struct {
 	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
 
 	// Persistent volume claim
-	Storage corev1.PersistentVolumeClaim `json:"storage,omitempty"`
+	Storage *corev1.PersistentVolumeClaim `json:"storage,omitempty"`
 }
 
 // ValkeyStatus defines the observed state of Valkey
@@ -64,12 +64,12 @@ type ValkeyStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-//+kubebuilder:resource:shortName=vk
+// +kubebuilder:resource:shortName=vk
 
 // Valkey is the Schema for the valkeys API
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=`.status.ready`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:printcolumn:name="Nodes",type="integer",JSONPath=".spec.masterNodes"
+// +kubebuilder:printcolumn:name="Nodes",type="integer",JSONPath=".spec.nodes"
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
 // +kubebuilder:printcolumn:name="Rootless",type="boolean",priority=1,JSONPath=".spec.rootless"
 // +kubebuilder:printcolumn:name="Image",type="string",priority=1,JSONPath=".spec.image"

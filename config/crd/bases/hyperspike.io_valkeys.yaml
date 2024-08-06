@@ -23,7 +23,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    - jsonPath: .spec.masterNodes
+    - jsonPath: .spec.nodes
       name: Nodes
       type: integer
     - jsonPath: .spec.replicas

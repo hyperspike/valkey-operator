@@ -841,6 +841,34 @@ func exporter(valkey *hyperv1.Valkey) corev1.Container {
 		},
 	}
 }
+
+func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
+	pv := corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "valkey-data",
+			Labels: labels(valkey),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				"ReadWriteOnce",
+			},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					"storage": func(s string) resource.Quantity { return resource.MustParse(s) }("8Gi"),
+				},
+			},
+		},
+	}
+	if valkey.Spec.Storage != nil {
+		pv = *valkey.Spec.Storage
+		pv.ObjectMeta.Name = "valkey-data"
+		for k, v := range labels(valkey) {
+			pv.ObjectMeta.Labels[k] = v
+		}
+	}
+	return pv
+}
+
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -859,22 +887,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			ServiceName:         valkey.Name + "-headless",
 			PodManagementPolicy: appsv1.ParallelPodManagement,
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:   "valkey-data",
-						Labels: labels(valkey),
-					},
-					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes: []corev1.PersistentVolumeAccessMode{
-							"ReadWriteOnce",
-						},
-						Resources: corev1.VolumeResourceRequirements{
-							Requests: corev1.ResourceList{
-								"storage": func(s string) resource.Quantity { return resource.MustParse(s) }("8Gi"),
-							},
-						},
-					},
-				},
+				generatePVC(valkey),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
