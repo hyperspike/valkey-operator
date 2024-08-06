@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"embed"
 	"fmt"
 	"io"
@@ -176,7 +177,18 @@ func labels(valkey *hyperv1.Valkey) map[string]string {
 func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valkey, password string) error {
 	logger := log.FromContext(ctx)
 
-	vClient, err := valkeyClient.NewClient(valkeyClient.ClientOption{InitAddress: []string{valkey.Name + "." + valkey.Namespace + ".svc:6379"}, Password: password})
+	opt := valkeyClient.ClientOption{
+		InitAddress: []string{valkey.Name + "." + valkey.Namespace + ".svc:6379"},
+		Password:    password,
+	}
+	if valkey.Spec.TLS {
+		opt.TLSConfig = &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true,
+			ServerName:         valkey.Name + "." + valkey.Namespace + ".svc",
+		}
+	}
+	vClient, err := valkeyClient.NewClient(opt)
 	if err != nil {
 		logger.Error(err, "failed to create valkey client", "valkey", valkey.Name, "namespace", valkey.Namespace)
 		return err
@@ -268,6 +280,20 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 			"ping_readiness_local.sh": string(pingReadinessLocal),
 			"ping_liveness_local.sh":  string(pingLivenessLocal),
 		},
+	}
+	if valkey.Spec.TLS {
+		pingReadinessLocal, err = scripts.ReadFile("scripts/ping_readiness_local_tls.sh")
+		if err != nil {
+			logger.Error(err, "failed to read ping_readiness_tls.sh")
+			return err
+		}
+		cm.Data["ping_readiness_local.sh"] = string(pingReadinessLocal)
+		pingLivenessLocal, err = scripts.ReadFile("scripts/ping_liveness_local_tls.sh")
+		if err != nil {
+			logger.Error(err, "failed to read ping_liveness_tls.sh")
+			return err
+		}
+		cm.Data["ping_liveness_local.sh"] = string(pingLivenessLocal)
 	}
 	if err := controllerutil.SetControllerReference(valkey, cm, r.Scheme); err != nil {
 		return err
@@ -451,6 +477,7 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 		logger.Error(err, "failed to detect cluster domain")
 		return err
 	}
+	logger.Info("using cluster domain " + clusterDomain)
 	issuer := valkey.Spec.CertIssuer
 	issuerType := valkey.Spec.CertIssuerType
 	cert := &certv1.Certificate{
@@ -474,21 +501,8 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 				valkey.Name + "-headless",
 				valkey.Name + "-headless." + valkey.Namespace + ".svc",
 				valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
-				valkey.Name + "-0",
-				valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
-				valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
-				valkey.Name + "-1",
-				valkey.Name + "-1." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
-				valkey.Name + "-1." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
-				valkey.Name + "-2",
-				valkey.Name + "-2." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
-				valkey.Name + "-2." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
-				valkey.Name + "-3",
-				valkey.Name + "-3." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
-				valkey.Name + "-3." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
-				valkey.Name + "-4",
-				valkey.Name + "-4." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
-				valkey.Name + "-4." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
+				"*." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
+				"*." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
 			},
 			IPAddresses: []string{
 				"127.0.0.1",
@@ -609,7 +623,17 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	}
 
 	// connect to the first node!
-	vClient, err := valkeyClient.NewClient(valkeyClient.ClientOption{InitAddress: []string{valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc:6379"}, Password: password})
+	opt := valkeyClient.ClientOption{
+		InitAddress: []string{valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc:6379"},
+		Password:    password,
+	}
+	if valkey.Spec.TLS {
+		opt.TLSConfig = &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true,
+		}
+	}
+	vClient, err := valkeyClient.NewClient(opt)
 	if err != nil {
 		logger.Error(err, "failed to create valkey client", "valkey", valkey.Name, "namespace", valkey.Namespace)
 		return err
@@ -761,6 +785,22 @@ func (r *ValkeyReconciler) getPodIps(ctx context.Context, valkey *hyperv1.Valkey
 	return ret, nil
 }
 
+func (r *ValkeyReconciler) getCertManagerIp(ctx context.Context) (string, error) {
+	logger := log.FromContext(ctx)
+	pods := &corev1.PodList{}
+	l := map[string]string{
+		"app.kubernetes.io/component": "controller",
+	}
+	if err := r.List(ctx, pods, client.InNamespace("cert-manager"), client.MatchingLabels(l)); err != nil {
+		logger.Error(err, "failed to list coredns pods")
+		return "", err
+	}
+	for _, pod := range pods.Items {
+		return pod.Status.PodIP, nil
+	}
+	return "", nil
+}
+
 func (r *ValkeyReconciler) detectClusterDomain(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -769,18 +809,9 @@ func (r *ValkeyReconciler) detectClusterDomain(ctx context.Context, valkey *hype
 	if clusterDomain == "" {
 		clusterDomain = "cluster.local"
 	}
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	ip := ""
-	defer func() {
-		if err := conn.Close(); err != nil {
-			logger.Error(err, "failed to close connection")
-		}
-	}()
+	ip, err := r.getCertManagerIp(ctx)
 	if err != nil {
-		logger.Error(err, "failed to dial udp")
-	} else {
-		localAddr := conn.LocalAddr().(*net.UDPAddr)
-		ip = localAddr.IP.String()
+		return "", err
 	}
 
 	if ip != "" {
@@ -788,9 +819,11 @@ func (r *ValkeyReconciler) detectClusterDomain(ctx context.Context, valkey *hype
 		if err != nil {
 			logger.Error(err, "failed to lookup addr", "ip", ip)
 		} else {
-			//		clusterDomain = strings.Split(addrs[0], ".")[0]
+			logger.Info("detected addrs", "addrs", addrs)
 			clusterDomain = addrs[0]
-			clusterDomain = strings.Trim(clusterDomain, clusterDomain[:strings.Index(clusterDomain, ".svc.")+5])
+			clusterDomain = clusterDomain[strings.Index(clusterDomain, ".svc.")+5:]
+			clusterDomain = strings.TrimSuffix(clusterDomain, ".")
+			logger.Info("detected cluster domain", "clusterDomain", clusterDomain)
 		}
 	}
 	valkey.Spec.ClusterDomain = clusterDomain
@@ -900,7 +933,7 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 }
 
 func exporter(valkey *hyperv1.Valkey) corev1.Container {
-	return corev1.Container{
+	container := corev1.Container{
 		Name:            Metrics,
 		Image:           "docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2",
 		ImagePullPolicy: "IfNotPresent",
@@ -973,6 +1006,38 @@ func exporter(valkey *hyperv1.Valkey) corev1.Container {
 			},
 		},
 	}
+	if valkey.Spec.TLS {
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      "valkey-tls",
+			MountPath: "/etc/valkey/certs",
+		})
+
+		tlsExporterEnv := []corev1.EnvVar{
+			{
+				Name:  "REDIS_ADDR",
+				Value: "rediss://localhost:6379",
+			},
+			{
+				Name:  "REDIS_EXPORTER_SKIP_TLS_VERIFICATION",
+				Value: "true",
+			},
+			/*
+				{
+					Name:  "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE",
+					Value: "/etc/valkey/certs/tls.key",
+				},
+				{
+					Name:  "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE",
+					Value: "/etc/valkey/certs/tls.crt",
+				},
+				{
+					Name:  "REDIS_EXPORTER_TLS_CA_FILE",
+					Value: "/etc/valkey/certs/ca.crt",
+				},*/
+		}
+		container.Env = append(container.Env, tlsExporterEnv...)
+	}
+	return container
 }
 
 func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
@@ -1006,6 +1071,10 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	tls := "no"
+	if valkey.Spec.TLS {
+		tls = "yes"
+	}
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
@@ -1133,7 +1202,7 @@ fi
 								},
 								{
 									Name:  "VALKEY_TLS_ENABLED",
-									Value: "no",
+									Value: tls,
 								},
 								{
 									Name:  "VALKEY_PORT_NUMBER",
@@ -1251,6 +1320,43 @@ fi
 				},
 			},
 		},
+	}
+	if valkey.Spec.TLS {
+		tlsEnv := []corev1.EnvVar{
+			{
+				Name:  "VALKEY_TLS_AUTH_CLIENTS",
+				Value: "no",
+			},
+			{
+				Name:  "VALKEY_TLS_PORT_NUMBER",
+				Value: "6379",
+			},
+			{
+				Name:  "VALKEY_TLS_CERT_FILE",
+				Value: "/etc/valkey/certs/tls.crt",
+			},
+			{
+				Name:  "VALKEY_TLS_KEY_FILE",
+				Value: "/etc/valkey/certs/tls.key",
+			},
+			{
+				Name:  "VALKEY_TLS_CA_FILE",
+				Value: "/etc/valkey/certs/ca.crt",
+			},
+		}
+		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, tlsEnv...)
+		sts.Spec.Template.Spec.Containers[0].VolumeMounts = append(sts.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "valkey-tls",
+			MountPath: "/etc/valkey/certs",
+		})
+		sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "valkey-tls",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: valkey.Name + "-tls",
+				},
+			},
+		})
 	}
 	if valkey.Spec.Prometheus {
 		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, exporter(valkey))

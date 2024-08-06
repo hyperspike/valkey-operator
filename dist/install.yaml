@@ -31,7 +31,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    - jsonPath: .spec.masterNodes
+    - jsonPath: .spec.nodes
       name: Nodes
       type: integer
     - jsonPath: .spec.replicas
@@ -70,6 +70,20 @@ spec:
           spec:
             description: ValkeySpec defines the desired state of Valkey
             properties:
+              certIssuer:
+                description: Certificate Issuer
+                type: string
+              certIssuerType:
+                default: ClusterIssuer
+                description: Certificate Issuer Type
+                enum:
+                - ClusterIssuer
+                - Issuer
+                type: string
+              clusterDomain:
+                default: cluster.local
+                description: Cluster Domain - used for DNS
+                type: string
               image:
                 default: docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0
                 description: Image to use
@@ -497,6 +511,10 @@ spec:
                         type: string
                     type: object
                 type: object
+              tls:
+                default: false
+                description: TLS Support
+                type: boolean
             type: object
           status:
             description: ValkeyStatus defines the observed state of Valkey
@@ -707,6 +725,27 @@ rules:
   - update
   - watch
 - apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - clusterissuers
+  - issuers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - ""
   resources:
   - events
@@ -874,7 +913,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/hyperspike/valkey-operator:v0.0.6
+        image: localhost:5000/controller:23
         livenessProbe:
           httpGet:
             path: /healthz
