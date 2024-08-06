@@ -1,6 +1,6 @@
 # valkey-operator
 
-Provision valkey (redis) clusters
+Provision [valkey](https://valkey.io) (redis) clusters
 
 ## Description
 
