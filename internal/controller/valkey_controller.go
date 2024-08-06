@@ -24,6 +24,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -40,6 +41,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	cmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	hyperv1 "hyperspike.io/valkey-operator/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -86,6 +89,8 @@ var scripts embed.FS
 // +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys/finalizers,verbs=update
+// +kubebuilder:rbac:groups=cert-manager.io,resources=clusterissuers;issuers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
@@ -130,6 +135,12 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, err
 		}
 		if err := r.upsertMetricsService(ctx, valkey); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	if valkey.Spec.TLS {
+		if err := r.upsertCertificate(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -430,6 +441,85 @@ func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyp
 	return nil
 }
 
+func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting certificate")
+
+	clusterDomain, err := r.detectClusterDomain(ctx, valkey)
+	if err != nil {
+		logger.Error(err, "failed to detect cluster domain")
+		return err
+	}
+	issuer := valkey.Spec.CertIssuer
+	issuerType := valkey.Spec.CertIssuerType
+	cert := &certv1.Certificate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
+		},
+		Spec: certv1.CertificateSpec{
+			CommonName: valkey.Name + "." + valkey.Namespace + ".svc",
+			SecretName: valkey.Name + "-tls",
+			IssuerRef: cmetav1.ObjectReference{
+				Name: issuer,
+				Kind: issuerType,
+			},
+			DNSNames: []string{
+				"localhost",
+				valkey.Name,
+				valkey.Name + "." + valkey.Namespace + ".svc",
+				valkey.Name + "." + valkey.Namespace + ".svc." + clusterDomain,
+				valkey.Name + "-headless",
+				valkey.Name + "-headless." + valkey.Namespace + ".svc",
+				valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
+				valkey.Name + "-0",
+				valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
+				valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
+				valkey.Name + "-1",
+				valkey.Name + "-1." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
+				valkey.Name + "-1." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
+				valkey.Name + "-2",
+				valkey.Name + "-2." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
+				valkey.Name + "-2." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
+				valkey.Name + "-3",
+				valkey.Name + "-3." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
+				valkey.Name + "-3." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
+				valkey.Name + "-4",
+				valkey.Name + "-4." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
+				valkey.Name + "-4." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
+			},
+			IPAddresses: []string{
+				"127.0.0.1",
+			},
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(valkey, cert, r.Scheme); err != nil {
+		return err
+	}
+	err = r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, cert)
+	if err != nil && errors.IsNotFound(err) {
+		if err := r.Create(ctx, cert); err != nil {
+			logger.Error(err, "failed to create certificate")
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Certificate %s/%s is created", valkey.Namespace, valkey.Name))
+	} else if err != nil {
+		logger.Error(err, "failed to fetch certificate")
+		return err
+	} else if err == nil && false { // detect changes
+		if err := r.Update(ctx, cert); err != nil {
+			logger.Error(err, "failed to update certificate")
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey, once bool) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -671,7 +761,47 @@ func (r *ValkeyReconciler) getPodIps(ctx context.Context, valkey *hyperv1.Valkey
 	return ret, nil
 }
 
-/* save for later
+func (r *ValkeyReconciler) detectClusterDomain(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
+	logger := log.FromContext(ctx)
+
+	logger.Info("detecting cluster domain")
+	clusterDomain := os.Getenv("CLUSTER_DOMAIN")
+	if clusterDomain == "" {
+		clusterDomain = "cluster.local"
+	}
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	ip := ""
+	defer func() {
+		if err := conn.Close(); err != nil {
+			logger.Error(err, "failed to close connection")
+		}
+	}()
+	if err != nil {
+		logger.Error(err, "failed to dial udp")
+	} else {
+		localAddr := conn.LocalAddr().(*net.UDPAddr)
+		ip = localAddr.IP.String()
+	}
+
+	if ip != "" {
+		addrs, err := net.LookupAddr(ip)
+		if err != nil {
+			logger.Error(err, "failed to lookup addr", "ip", ip)
+		} else {
+			//		clusterDomain = strings.Split(addrs[0], ".")[0]
+			clusterDomain = addrs[0]
+			clusterDomain = strings.Trim(clusterDomain, clusterDomain[:strings.Index(clusterDomain, ".svc.")+5])
+		}
+	}
+	valkey.Spec.ClusterDomain = clusterDomain
+	if err := r.Update(ctx, valkey); err != nil {
+		logger.Error(err, "failed to update valkey")
+		return "", err
+	}
+	return clusterDomain, nil
+}
+
+/*
 func (r *ValkeyReconciler) getPodIp(ctx context.Context, name, namespace string) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -680,6 +810,9 @@ func (r *ValkeyReconciler) getPodIp(ctx context.Context, name, namespace string)
 			Name:      name,
 			Namespace: namespace,
 		},
+	}
+	if err := r.waitForPod(ctx, name, namespace); err != nil {
+		return "", err
 	}
 
 	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, pod); err != nil {
