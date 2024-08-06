@@ -12,4 +12,3 @@ spec:
   certIssuer: selfsigned
   prometheusLabels:
     prometheus: "1"
-  # TODO(user): Add fields here
