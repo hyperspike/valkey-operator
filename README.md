@@ -20,14 +20,14 @@ See the following link for more information on avialable Custom Resource Options
 
 Deploy kubernetes locally using minikube, and install the controller:
 ```sh
-make minikube
-kubectl apply -f https://raw.githubusercontent.com/hyperspike/valkey-operator/main/dist/install.yaml
+make quickstart
 ```
 
-Create a ValkeyCluster
+and optionally, turn on TLS and Prometheus:
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/hyperspike/valkey-operator/main/valkey.yaml
+make quickstart TLS=1 PROMETHEUS=1
 ```
+
 
 ### To Uninstall
 

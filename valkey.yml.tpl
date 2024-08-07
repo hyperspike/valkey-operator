@@ -7,8 +7,8 @@ metadata:
   name: keyval
 spec:
   volumePermissions: true
-  prometheus: false
-  tls: false
+  prometheus: @PROMETHEUS@
+  tls: @TLS@
   certIssuer: selfsigned
   prometheusLabels:
     prometheus: "1"
