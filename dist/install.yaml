@@ -37,8 +37,8 @@ spec:
     - jsonPath: .spec.replicas
       name: Replicas
       type: integer
-    - jsonPath: .spec.rootless
-      name: Rootless
+    - jsonPath: .spec.volumePermissions
+      name: Volumme Permissions
       priority: 1
       type: boolean
     - jsonPath: .spec.image
@@ -107,10 +107,6 @@ spec:
                 description: Number of replicas
                 format: int32
                 type: integer
-              rootless:
-                default: true
-                description: Rootless mode
-                type: boolean
               storage:
                 description: Persistent volume claim
                 properties:
@@ -514,6 +510,11 @@ spec:
               tls:
                 default: false
                 description: TLS Support
+                type: boolean
+              volumePermissions:
+                default: false
+                description: Turn on an init container to set permissions on the persistent
+                  volume
                 type: boolean
             type: object
           status:

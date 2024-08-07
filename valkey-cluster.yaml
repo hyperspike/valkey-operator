@@ -26,8 +26,6 @@ spec:
     - ports:
         - port: 6379
         - port: 16379
-        # Allow prometheus scrapes for metrics
-        - port: 9121
 ---
 # Source: valkey-cluster/templates/poddisruptionbudget.yaml
 apiVersion: policy/v1beta1
@@ -78,25 +76,7 @@ metadata:
     helm.sh/chart: valkey-cluster-0.1.8
 type: Opaque
 data:
-  valkey-password: "eFM5bURTVGN2VQ=="
----
-# Source: valkey-cluster/templates/tls-secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: valkey-cluster-crt
-  namespace: "default"
-  labels:
-    app.kubernetes.io/instance: valkey-cluster
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.6
-    helm.sh/chart: valkey-cluster-0.1.8
-type: kubernetes.io/tls
-data:
-  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVGakNDQXY2Z0F3SUJBZ0lSQU42cjJuOU90K250cFV1SkZ5dFpYdmd3RFFZSktvWklodmNOQVFFTEJRQXcKSERFYU1CZ0dBMVVFQXhNUmRtRnNhMlY1TFdOc2RYTjBaWEl0WTJFd0hoY05NalF3T0RBMk1UUTFNVFUyV2hjTgpNalV3T0RBMk1UUTFNVFUyV2pBWk1SY3dGUVlEVlFRREV3NTJZV3hyWlhrdFkyeDFjM1JsY2pDQ0FTSXdEUVlKCktvWklodmNOQVFFQkJRQURnZ0VQQURDQ0FRb0NnZ0VCQUs2Rm1sVnJWTGQ4KzhqKzBkVVdPaThzWXVjMWVkSksKK0tUdUJ4RDFhYmg2bWJibzcxMDA1L2ZCY2ZzaU43SEJHYjJtcisyVVhkOXRlYmJqc0J4Nll3cUdiNmFkUFloMAo3QmNNR25NaUVHVWcrNHppL0pIQVJaczFZQWh5UHFZVkJxUnJWWTVrOEMvNmtsSGo0RGF1UUdxTzlwS0dSRGhtCnB3SWlyRUJ6VzVmZVRXUnV3V0VUK0Rxam1BcUlHNWo5aDF1Y3VOZFFGei9KSzRmMzlSLy9yOTloVzJMc21LdFkKTUhPdkYyNVE5blpweE8rNTZnNW9YeDk4clo0ZTVHdFBPMmVZZDlDS3BrVGFNTmtML1IwTW40ZW5XRHpEQjg0QQpFL2dXNzNaUG8yMVV0Q045RlM3WjdVZ3BjUDRpaXlVMExkZGNDZzk1aEZiVEw4S3BCL1RlSnBrQ0F3RUFBYU9DCkFWUXdnZ0ZRTUE0R0ExVWREd0VCL3dRRUF3SUZvREFkQmdOVkhTVUVGakFVQmdnckJnRUZCUWNEQVFZSUt3WUIKQlFVSEF3SXdEQVlEVlIwVEFRSC9CQUl3QURBZkJnTlZIU01FR0RBV2dCU1ZtTUwrZXMvWHBqeGJvU2N1WXd0aQpmM2pYM2pDQjd3WURWUjBSQklIbk1JSGtnaW9xTG5aaGJHdGxlUzFqYkhWemRHVnlMbVJsWm1GMWJIUXVjM1pqCkxtTnNkWE4wWlhJdWJHOWpZV3lDS0haaGJHdGxlUzFqYkhWemRHVnlMbVJsWm1GMWJIUXVjM1pqTG1Oc2RYTjAKWlhJdWJHOWpZV3lDTXlvdWRtRnNhMlY1TFdOc2RYTjBaWEl0YUdWaFpHeGxjM011WkdWbVlYVnNkQzV6ZG1NdQpZMngxYzNSbGNpNXNiMk5oYklJeGRtRnNhMlY1TFdOc2RYTjBaWEl0YUdWaFpHeGxjM011WkdWbVlYVnNkQzV6CmRtTXVZMngxYzNSbGNpNXNiMk5oYklJSk1USTNMakF1TUM0eGdnbHNiMk5oYkdodmMzU0NEblpoYkd0bGVTMWoKYkhWemRHVnlNQTBHQ1NxR1NJYjNEUUVCQ3dVQUE0SUJBUUNSQUZJVDZPaFdwSWRNNGIzR0RnMzA4aTNsWUZCUgp0QzMrZjVyZWZwV0NqL1VsRllWZndieFhGOUoraTcvamVjSmNISnFyWEI3VUkwY09VZ1lBV0Y0UTJjdU5VOE8vCks3WVdubVN5UDhybzc0RjZqZ2RocDlKa2VVcmxjdDVQSFJheUFBT0NibWVRb3FDRStjV3lHeHJJQ1ZyUVUzRzcKU3hUdFovNnBlVHYvL2dUQWdtclV0WVpJNkhRN2VnWmU0ME1tUVF3akt3K1c4amtXUHRpSDNjT0lqdFVPalc0egorTFQvQmg2UUNOaWlGS3IrNmx1bXU3S3V0NHNWcmFMU1pLcVFXVWtteW0rMFhlRk5xV09pT3JGclhRV2ZPdWtrCm9zUWZUZXc1UE1IR0txTURsc2tPQXgreW5Nb3ZCZUtYUmpMdEdhb1hPbzU5Nnk1ZU01bWxTOE5vCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
-  tls.key: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBcm9XYVZXdFV0M3o3eVA3UjFSWTZMeXhpNXpWNTBrcjRwTzRIRVBWcHVIcVp0dWp2ClhUVG45OEZ4K3lJM3NjRVp2YWF2N1pSZDMyMTV0dU93SEhwakNvWnZwcDA5aUhUc0Z3d2FjeUlRWlNEN2pPTDgKa2NCRm16VmdDSEkrcGhVR3BHdFZqbVR3TC9xU1VlUGdOcTVBYW83MmtvWkVPR2FuQWlLc1FITmJsOTVOWkc3QgpZUlA0T3FPWUNvZ2JtUDJIVzV5NDExQVhQOGtyaC9mMUgvK3YzMkZiWXV5WXExZ3djNjhYYmxEMmRtbkU3N25xCkRtaGZIM3l0bmg3a2EwODdaNWgzMElxbVJOb3cyUXY5SFF5Zmg2ZFlQTU1IemdBVCtCYnZkaytqYlZTMEkzMFYKTHRudFNDbHcvaUtMSlRRdDExd0tEM21FVnRNdndxa0g5TjRtbVFJREFRQUJBb0lCQUVlMGp4L1BsS1E3VHZ4YgpibjE5djNSSWFXNlQ4elNySnhRazFIUnNVUDdDS013VlV0dlo5QUZBMHdNYklRVUEwUUd5TGhDUWFDMTN2bzJkCmFXdWFBWDErbFB0Qkdkb3FLQ0trRDI0RXJmWFBJbXZWaTI2Yk1ENUFKTy96ZUxnbVpXOUN4b2xXQWJYRTN6K1UKUURoWFNoSStJU004MVdUVEVJVjVGNHIzbXNkL21iQm03UHRUSHZkb1F0bElpMlpaWHlKcEhMYzJsYzEzNWtvQQpqUnJ0TkphNUVJMHllbUJRZzhXWFJZdHQvNjA4eml0eHlPeXhtMFIvUUY2bkF2RmUraVBtZVBHR0IxQnFGMTlrCnZEK2dNN0g2UkJUVElFelUzTW8rOGFHUDNsREJDYjlzdlNZWldXdk9tYTdpckVlaHR5NW56SFNieC81OTBNRlUKRnA1QytJRUNnWUVBd1lpSWJpeGlIeGpqMFJJczBuM1NQMTg0dU1lUW5nSjQrS3JrWUF6bXZSb01LRFpFMzZyQQpMQ1g0cFc3bUdXU1NBQ1NGT2dlV1lnYk84Rlg2V3JqNktDVHJ1Y1E1QlozeVNubzM5aDJzLzJzK0hTTFc1a2ZNCkp3NVd3WEJzUENaS2ZhZXhKUlBtVWhRV2xMUmpZcWdqTmtnQlVCZGxzVzZNVjh3RklIQWtyMmtDZ1lFQTV0b3MKVGNQdDA0Ui9oQVpkenRoQUNsQ2FXZ1B5V0sxSVFNT1cyTlpYOVFGMXBUTjlsTlJXd2pmV0V3MWpTUXBpZHhiVApqd1hNUm5QdTV5U1NuYTFWRWdRajQwNkwwcFJhZmZVNHJIN0dhZ0QrSWNFVjFBcURScWp1NktUdDVCblc0UFpJClYrOVBFZWlkYkU3TkdCaGluZFI3T1N2Y1gwbXdiWllPNklOdEI3RUNnWUJadml3MW1wTXRoR2N2N2RPbkQvMU0Kc2FVbDJqU3ZjTW9UMVhydEowNWY1aEk1RzJFNHJuOUtlWmtoYlpsNXNPOGE3ZFJ4b2s4VHljQndKZzVmdjJNUQo5bjN3dUpNUWpidHEyZDNWWE5GNTU0cjRDODNISHdnR0hGb1NmVVZUWnhZbnlua1VqblBCSDl1UXZVMVExRkx2CnV0Z1JBYWlBYkpqYnBabkMvdjJqOFFLQmdRRGZrSEpQYld1bzZDeEZ3NVNkZUxlc1JacjFpZFR0SkFOUkZSbkYKTE85Sml2eFAzS25GdEUzQkVTbjBrWWFSZWNrWjQ3VkdVU3NmSDY5QmtoMmJMZjJ3ME9tZ2ZMVFVYbSswaEFNNgpxaHVsRlFrSHoySkFVMTRHMUJ0cW1pNzRORDN3NXhId2R3VndKb0l1SGJKcG4xUUIzWURvUVIzTitpTXVQYUI2CmRLem1RUUtCZ0NWdHpFSnRVVHp6c0Rpa2tMWTI5eW9FaUxPYVM0cmp3UW00VTcwS1hQd1U4VmlINGhuQjFXR1YKWEw2OHU2QmdSbmxVWFhVYjB0VTFleVp2em1lUEFRZk1Ub1o5SkFma0UxVFFVZyt2emZ1UENiTjdzTnBmb0VuZgpUK1kwMTlGOTd1OHZSTFNic2ZQWFZxdWo5M0hqVHZCeUxoTk9RMXlBQTF2Ynl3OWo4YlJSCi0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
-  ca.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURJekNDQWd1Z0F3SUJBZ0lRUW8zYjNWcktWY2pJNC9VV0dMRFB3REFOQmdrcWhraUc5dzBCQVFzRkFEQWMKTVJvd0dBWURWUVFERXhGMllXeHJaWGt0WTJ4MWMzUmxjaTFqWVRBZUZ3MHlOREE0TURZeE5EVXhOVFphRncweQpOVEE0TURZeE5EVXhOVFphTUJ3eEdqQVlCZ05WQkFNVEVYWmhiR3RsZVMxamJIVnpkR1Z5TFdOaE1JSUJJakFOCkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQTlNYWoya1BSNFdkNGkwV0ZsZnZIdHlSR29EVnoKSzhtbHVLM2JBSkhGVUV2a3Q0QXQySm1KY0gvaG1YaCtIbitwYzE5UFNieC95WGU1dnFkdjNBOTl1YnU5SUxSZwo4T1RpQ1BYd1poS3luOHBva29YUGdEOG40VzdncS9STzBmV3lYNkxPQVVNMmlZV2lCWWhLb1Vxemo1bEsrZktEClJrZC9UeUJibTFvWFc5QXVCOTNZYUhHT1hVQm1UTE4xSnBIdmdnQVA2UXdzSWs5Wm1wYi9vRE9YamtNT043cEwKWm9UZitKL1QrWElzVVp0cldzMDZ1elQ2b1dnNWhtdmZodFhMWktaR1paSC9DVmMxT0lJTC9QRGZLN1Q3cFpnbgphR2pmc1BTMzB2K21idnpJSXpES0I2WUhFdjlyZ1Y1bmhpQlBHcDRzWjdMVVlxK1o3N0tkQ08xN0RRSURBUUFCCm8yRXdYekFPQmdOVkhROEJBZjhFQkFNQ0FxUXdIUVlEVlIwbEJCWXdGQVlJS3dZQkJRVUhBd0VHQ0NzR0FRVUYKQndNQ01BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0hRWURWUjBPQkJZRUZKV1l3djU2ejllbVBGdWhKeTVqQzJKLwplTmZlTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFBMmV5bFh5YlBsdUgzWHU3S00vQXk4bWMyTElQZXNwOWx4CmdKYXRDVW8xQ05RZElGQnNVTmptYWhFbXlNNWNIRGNiT3N2N05vdThsVXNVaHl0Mk9tYjN1dW9tdjk2a05SM3UKVURweFNvbzNod0QxUmR4WUxFK0dBai9QMEk5ZlNWZEt3dkZEYmVWb2E3cTZkWHcyNExtYWVMbkpXMFE3MXRTLwp3SUtyenZYQTQ0MnBtVWVOTFZFcjJjK3ZnZ1Qxd0xsYnVpTzJsbkxxTDRvd09ydnArUk5WT0pCcDc5ZjdGUzEwClFJVHVJMG5Hc2ptZHlvRUxZR1M5aWthcllkQ0ZtUCtJTkdweFdQZ2FaWEwwOHppT2JOc0xocjZSMXhxczJlbzEKNHUxdm1sckVLSE92Q3E1OU5oN2VWRlpoNmpZMDA3cnFTcFIrQXd0a3Z4VHVvTlR2OWdSVAotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  valkey-password: "d2xTd3VKbDNKNg=="
 ---
 # Source: valkey-cluster/templates/configmap.yaml
 apiVersion: v1
@@ -2396,11 +2376,7 @@ data:
       timeout -s 15 $1 \
       valkey-cli \
         -h localhost \
-        -p $VALKEY_TLS_PORT_NUMBER \
-        --tls \
-        --cert /opt/bitnami/valkey/certs/tls.crt \
-        --key /opt/bitnami/valkey/certs/tls.key \
-        --cacert /opt/bitnami/valkey/certs/ca.crt \
+        -p $VALKEY_PORT_NUMBER \
         ping
     )
     if [ "$?" -eq "124" ]; then
@@ -2416,11 +2392,7 @@ data:
         timeout -s 15 $1 \
         valkey-cli \
           -h localhost \
-          -p $VALKEY_TLS_PORT_NUMBER \
-          --tls \
-          --cert /opt/bitnami/valkey/certs/tls.crt \
-          --key /opt/bitnami/valkey/certs/tls.key \
-          --cacert /opt/bitnami/valkey/certs/ca.crt \
+          -p $VALKEY_PORT_NUMBER \
           CLUSTER INFO | grep cluster_state | tr -d '[:space:]'
       )
       if [ "$?" -eq "124" ]; then
@@ -2442,11 +2414,7 @@ data:
       timeout -s 15 $1 \
       valkey-cli \
         -h localhost \
-        -p $VALKEY_TLS_PORT_NUMBER \
-        --tls \
-        --cert /opt/bitnami/valkey/certs/tls.crt \
-        --key /opt/bitnami/valkey/certs/tls.key \
-        --cacert /opt/bitnami/valkey/certs/ca.crt \
+        -p $VALKEY_PORT_NUMBER \
         ping
     )
     if [ "$?" -eq "124" ]; then
@@ -2482,29 +2450,6 @@ spec:
     - name: tcp-redis-bus
       port: 16379
       targetPort: tcp-redis-bus
-  selector:
-    app.kubernetes.io/instance: valkey-cluster
-    app.kubernetes.io/name: valkey-cluster
----
-# Source: valkey-cluster/templates/metrics-svc.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: valkey-cluster-metrics
-  namespace: "default"
-  labels:
-    app.kubernetes.io/instance: valkey-cluster
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.6
-    helm.sh/chart: valkey-cluster-0.1.8
-    app.kubernetes.io/component: "metrics"
-spec:
-  type: ClusterIP
-  ports:
-    - name: metrics
-      port: 9121
-      targetPort: http-metrics
   selector:
     app.kubernetes.io/instance: valkey-cluster
     app.kubernetes.io/name: valkey-cluster
@@ -2567,11 +2512,9 @@ spec:
         app.kubernetes.io/version: 7.2.6
         helm.sh/chart: valkey-cluster-0.1.8
       annotations:
-        checksum/scripts: 77d07118d7423f8091975938d385e4c82f46fa58b80c09366a7f7def9ceb6865
-        checksum/secret: 8f85989a540af1a8b382350e402eff88745047fbeff60dee1b10e22b2f648a6a
+        checksum/scripts: b204c1d5491035498ad8651133e689c4b01520dcd8f32f44f194dda55a4de9a3
+        checksum/secret: 062ae40b50d5f15a9e51d26f734999b534ea29f61dcc3a496ab84e0aa4631a66
         checksum/config: b6d973afb828078566848d0309cc59794c031e370e6e8bca59a70745a6a48f31
-        prometheus.io/port: '9121'
-        prometheus.io/scrape: "true"
     spec:
       hostNetwork: false
       enableServiceLinks: false
@@ -2649,17 +2592,9 @@ spec:
             - name: VALKEY_AOF_ENABLED
               value: "yes"
             - name: VALKEY_TLS_ENABLED
-              value: "yes"
-            - name: VALKEY_TLS_PORT_NUMBER
+              value: "no"
+            - name: VALKEY_PORT_NUMBER
               value: "6379"
-            - name:  VALKEY_TLS_AUTH_CLIENTS
-              value: "yes"
-            - name:  VALKEY_TLS_CERT_FILE
-              value: /opt/bitnami/valkey/certs/tls.crt
-            - name:  VALKEY_TLS_KEY_FILE
-              value: /opt/bitnami/valkey/certs/tls.key
-            - name:  VALKEY_TLS_CA_FILE
-              value: /opt/bitnami/valkey/certs/ca.crt
           ports:
             - name: tcp-redis
               containerPort: 6379
@@ -2719,60 +2654,13 @@ spec:
             - name: empty-dir
               mountPath: /tmp
               subPath: tmp-dir
-            - name: valkey-certificates
-              mountPath: /opt/bitnami/valkey/certs
-              readOnly: true
-        - name: metrics
-          image: docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2
+      initContainers:
+        - name: volume-permissions
+          image: docker.io/bitnami/os-shell:12-debian-12-r27
           imagePullPolicy: "IfNotPresent"
+          command: ["/bin/chown", "-R", "1001:1001", "/bitnami/valkey/data"]
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-              - ALL
-            privileged: false
-            readOnlyRootFilesystem: true
-            runAsGroup: 1001
-            runAsNonRoot: true
-            runAsUser: 1001
-            seLinuxOptions: null
-            seccompProfile:
-              type: RuntimeDefault
-          command:
-            - /bin/bash
-            - -c
-            - |
-              valkey_exporter
-          env:
-            - name: BITNAMI_DEBUG
-              value: "false"
-            - name: VALKEY_ALIAS
-              value: valkey-cluster
-            - name: VALKEY_ADDR
-              value: "valkeys://127.0.0.1:6379"
-            - name: VALKEY_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: valkey-cluster
-                  key: valkey-password
-            - name: VALKEY_EXPORTER_TLS_CLIENT_KEY_FILE
-              value: /opt/bitnami/valkey/certs/tls.key
-            - name: VALKEY_EXPORTER_TLS_CLIENT_CERT_FILE
-              value: /opt/bitnami/valkey/certs/tls.crt
-            - name: VALKEY_EXPORTER_TLS_CA_CERT_FILE
-              value: /opt/bitnami/valkey/certs/ca.crt
-            - name: VALKEY_EXPORTER_WEB_LISTEN_ADDRESS
-              value: :9121
-          volumeMounts:
-            - name: empty-dir
-              mountPath: /tmp
-              subPath: tmp-dir
-            - name: valkey-certificates
-              mountPath: /opt/bitnami/valkey/certs
-              readOnly: true
-          ports:
-            - name: http-metrics
-              containerPort: 9121
+            runAsUser: 0
           resources:
             limits:
               cpu: 150m
@@ -2782,6 +2670,13 @@ spec:
               cpu: 100m
               ephemeral-storage: 50Mi
               memory: 128Mi
+          volumeMounts:
+            - name: empty-dir
+              mountPath: /tmp
+              subPath: tmp-dir
+            - name: valkey-data
+              mountPath: /bitnami/valkey/data
+              subPath: 
       volumes:
         - name: scripts
           configMap:
@@ -2792,10 +2687,6 @@ spec:
             name: valkey-cluster-default
         - name: empty-dir
           emptyDir: {}
-        - name: valkey-certificates
-          secret:
-            secretName: valkey-cluster-crt
-            defaultMode: 256
   volumeClaimTemplates:
     - metadata:
         name: valkey-data
@@ -2808,27 +2699,3 @@ spec:
         resources:
           requests:
             storage: "8Gi"
----
-# Source: valkey-cluster/templates/metrics-prometheus.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: valkey-cluster
-  namespace: "default"
-  labels:
-    app.kubernetes.io/instance: valkey-cluster
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: valkey-cluster
-    app.kubernetes.io/version: 7.2.6
-    helm.sh/chart: valkey-cluster-0.1.8
-spec:
-  endpoints:
-  - port: metrics
-  selector:
-    matchLabels:
-      app.kubernetes.io/instance: valkey-cluster
-      app.kubernetes.io/name: valkey-cluster
-      app.kubernetes.io/component: "metrics"
-  namespaceSelector:
-    matchNames:
-    - default

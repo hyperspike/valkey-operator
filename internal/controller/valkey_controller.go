@@ -1385,6 +1385,35 @@ fi
 			},
 		},
 	}
+	if valkey.Spec.VolumePermissions {
+		sts.Spec.Template.Spec.InitContainers = []corev1.Container{
+			{
+				Name:            "volume-permissions",
+				Image:           "docker.io/bitnami/os-shell:12-debian-12-r27",
+				ImagePullPolicy: "IfNotPresent",
+				Command: []string{
+					"/bin/chown",
+					"-R",
+					"1001:1001",
+					"/bitnami/valkey/data",
+				},
+				SecurityContext: &corev1.SecurityContext{
+					RunAsUser: func(i int64) *int64 { return &i }(0),
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "valkey-data",
+						MountPath: "/bitnami/valkey/data",
+					},
+					{
+						Name:      "empty-dir",
+						MountPath: "/tmp",
+						SubPath:   "tmp-dir",
+					},
+				},
+			},
+		}
+	}
 	if valkey.Spec.TLS {
 		tlsEnv := []corev1.EnvVar{
 			{

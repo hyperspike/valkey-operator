@@ -141,12 +141,17 @@ addons() {
 	sed -i'' -e 's/\(replicas:\).*/\1\ 2/' .coredns.yaml
 	kubectl apply -f .coredns.yaml
 	#kubectl apply -f $SCRIPT_DIR/postgres-operator.yaml
-	kubectl apply -f $SCRIPT_DIR/minikube-pvc-hack.yaml
-	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v${CERTMANAGER_VERSION}/cert-manager.yaml
-	LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
-	curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl create -f -
-	kubectl apply -f $SCRIPT_DIR/prometheus.yaml
-	kubectl apply -f $SCRIPT_DIR/issuer.yaml
+	#kubectl apply -f $SCRIPT_DIR/minikube-pvc-hack.yaml
+	if [ ! -z ${TLS} ]; then
+		LATEST=$(curl -s curl https://api.github.com/repos/cert-manager/cert-manager/releases/latest  | jq -cr .tag_name)
+		kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/${LATEST}/cert-manager.yaml
+		kubectl apply -f $SCRIPT_DIR/issuer.yaml
+	fi
+	if [ ! -z ${PROMETHEUS} ]; then
+		LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
+		curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl create -f -
+		kubectl apply -f $SCRIPT_DIR/prometheus.yaml
+	fi
 }
 
 OS=$(uname)

@@ -6,9 +6,9 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: keyval
 spec:
-  rootless: true
-  prometheus: true
-  tls: true
+  volumePermissions: true
+  #prometheus: true
+  #tls: true
   certIssuer: selfsigned
   prometheusLabels:
     prometheus: "1"

@@ -41,9 +41,9 @@ type ValkeySpec struct {
 	// +kubebuilder:default:=0
 	Replicas int32 `json:"replicas,omitempty"`
 
-	// Rootless mode
-	// +kubebuilder:default:=true
-	Rootless bool `json:"rootless,omitempty"`
+	// Turn on an init container to set permissions on the persistent volume
+	// +kubebuilder:default:=false
+	VolumePermissions bool `json:"volumePermissions,omitempty"`
 
 	// TLS Support
 	// +kubebuilder:default:=false
@@ -85,7 +85,7 @@ type ValkeyStatus struct {
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Nodes",type="integer",JSONPath=".spec.nodes"
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
-// +kubebuilder:printcolumn:name="Rootless",type="boolean",priority=1,JSONPath=".spec.rootless"
+// +kubebuilder:printcolumn:name="Volumme Permissions",type="boolean",priority=1,JSONPath=".spec.volumePermissions"
 // +kubebuilder:printcolumn:name="Image",type="string",priority=1,JSONPath=".spec.image"
 type Valkey struct {
 	metav1.TypeMeta   `json:",inline"`

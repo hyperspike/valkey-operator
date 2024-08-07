@@ -27,7 +27,6 @@ SHELL = /usr/bin/env bash -o pipefail
 
 K8S_VERSION ?= 1.30.3
 CILIUM_VERSION ?= 1.16.0
-CERTMANAGER_VERSION ?= 1.15.2
 
 V ?= 0
 ifeq ($(V), 1)
@@ -191,6 +190,8 @@ minikube: ## Spool up a local minikube cluster for development
 	$QK8S_VERSION=$(K8S_VERSION) \
 		CILIUM_VERSION=$(CILIUM_VERSION) \
 		CERTMANAGER_VERSION=$(CERTMANAGER_VERSION) \
+		TLS=$(TLS) \
+		PROMETHEUS=$(PROMETHEUS) \
 		scripts/minikube.sh
 
 tunnel: ## turn on minikube's tunnel to test ingress and get UI access
