@@ -33,6 +33,10 @@ type ValkeySpec struct {
 	// +kubebuilder:default:="docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0"
 	Image string `json:"image,omitempty"`
 
+	// Exporter Image to use
+	// +kubebuilder:default:="docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2"
+	ExporterImage string `json:"exporterImage,omitempty"`
+
 	// Number of nodes
 	// +kubebuilder:default:=3
 	Nodes int32 `json:"nodes,omitempty"`

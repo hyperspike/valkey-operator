@@ -999,7 +999,7 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 func exporter(valkey *hyperv1.Valkey) corev1.Container {
 	container := corev1.Container{
 		Name:            Metrics,
-		Image:           "docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2",
+		Image:           valkey.Spec.ExporterImage,
 		ImagePullPolicy: "IfNotPresent",
 		Ports: []corev1.ContainerPort{
 			{
@@ -1444,7 +1444,7 @@ fi
 		sts.Spec.Template.Spec.InitContainers = []corev1.Container{
 			{
 				Name:            "volume-permissions",
-				Image:           "docker.io/bitnami/os-shell:12-debian-12-r27",
+				Image:           valkey.Spec.Image,
 				ImagePullPolicy: "IfNotPresent",
 				Command: []string{
 					"/bin/chown",
