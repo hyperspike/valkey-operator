@@ -1178,6 +1178,13 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 		},
 	}
 }
+func createCluster(valkey *hyperv1.Valkey) string {
+	create := "no"
+	if valkey.Spec.Nodes > 1 {
+		create = "yes"
+	}
+	return create
+}
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -1267,10 +1274,10 @@ fi
 pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
 pod_index="${pod_index[-1]}"
 if [[ "$pod_index" == "0" ]]; then
-  export VALKEY_CLUSTER_CREATOR="yes"
+  export VALKEY_CLUSTER_CREATOR="%s"
   export VALKEY_CLUSTER_REPLICAS="%d"
 fi
-/opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh`, valkey.Spec.Replicas),
+/opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh`, createCluster(valkey), valkey.Spec.Replicas),
 							},
 							Env: []corev1.EnvVar{
 								{
