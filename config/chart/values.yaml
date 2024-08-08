@@ -10,7 +10,7 @@ controllerManager:
         - ALL
     image:
       repository: ghcr.io/hyperspike/valkey-operator
-      tag: v0.0.8
+      tag: v0.0.10
     resources:
       limits:
         cpu: 500m
