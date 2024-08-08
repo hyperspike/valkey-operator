@@ -1,0 +1,24 @@
+controllerManager:
+  manager:
+    args:
+    - --leader-elect
+    - --health-probe-bind-address=:8081
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+    image:
+      repository: ghcr.io/hyperspike/valkey-operator
+      tag: v0.0.8
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+  replicas: 1
+  serviceAccount:
+    annotations: {}
+kubernetesClusterDomain: cluster.local

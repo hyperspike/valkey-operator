@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "chart.fullname" . }}-valkey-viewer-role
+  labels:
+  {{- include "chart.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - hyperspike.io
+  resources:
+  - valkeys
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - hyperspike.io
+  resources:
+  - valkeys/status
+  verbs:
+  - get

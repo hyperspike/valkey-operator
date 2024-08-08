@@ -185,6 +185,18 @@ CONTROLLER_TOOLS_VERSION ?= v0.15.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
 
+######################### Helmify
+HELMIFY ?= $(LOCALBIN)/helmify
+
+.PHONY: helmify
+helmify: $(HELMIFY) ## Download helmify locally if necessary.
+$(HELMIFY): $(LOCALBIN)
+	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@v0.4.13
+
+helm: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
+	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir config/chart
+
+
 .PHONY: minikube tunnel registry-proxy prometheus-proxy
 minikube: ## Spool up a local minikube cluster for development
 	$QK8S_VERSION=$(K8S_VERSION) \
