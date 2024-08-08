@@ -1052,7 +1052,7 @@ func exporter(valkey *hyperv1.Valkey) corev1.Container {
 			"-c",
 			"redis_exporter", // this seems liable to change
 		},
-		Resources: getExporterResourceRequirements(valkey),
+		Resources: getExporterResourceRequirements(),
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
 			Capabilities: &corev1.Capabilities{
@@ -1151,7 +1151,7 @@ func getResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequirements
 	}
 }
 
-func getExporterResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequirements {
+func getExporterResourceRequirements() corev1.ResourceRequirements {
 	return corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
 			corev1.ResourceCPU:              resource.MustParse("50m"),
@@ -1166,8 +1166,7 @@ func getExporterResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequ
 	}
 }
 
-func getInitContainerResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequirements {
-	// You might want to add a separate field in the CRD for init container resources
+func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 	return corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -1446,7 +1445,7 @@ fi
 					"1001:1001",
 					"/bitnami/valkey/data",
 				},
-				Resources: getInitContainerResourceRequirements(valkey),
+				Resources: getInitContainerResourceRequirements(),
 				SecurityContext: &corev1.SecurityContext{
 					RunAsUser: func(i int64) *int64 { return &i }(0),
 				},
