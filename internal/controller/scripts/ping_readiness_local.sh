@@ -18,7 +18,8 @@ if [ "$response" != "PONG" ]; then
   echo "$response"
   exit 1
 fi
-if [ ! -f "$VALKEY_STATUS_FILE" ]; then
+nodes=$(echo $VALKEY_NODES | wc -w)
+if [ ! -f "$VALKEY_STATUS_FILE" ] && [ "$nodes" != "1" ]; then
   response=$(
     timeout -s 15 $1 \
     valkey-cli \
