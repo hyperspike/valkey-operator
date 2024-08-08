@@ -1052,6 +1052,7 @@ func exporter(valkey *hyperv1.Valkey) corev1.Container {
 			"-c",
 			"redis_exporter", // this seems liable to change
 		},
+		Resources: getExporterResourceRequirements(valkey),
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
 			Capabilities: &corev1.Capabilities{
@@ -1130,7 +1131,54 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 	}
 	return pv
 }
+func getResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequirements {
+	if valkey.Spec.Resources != nil {
+		return *valkey.Spec.Resources
+	}
 
+	// Default resource requirements if not specified in the CR
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:              resource.MustParse("100m"),
+			corev1.ResourceEphemeralStorage: resource.MustParse("50Mi"),
+			corev1.ResourceMemory:           resource.MustParse("128Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:              resource.MustParse("150m"),
+			corev1.ResourceEphemeralStorage: resource.MustParse("2Gi"),
+			corev1.ResourceMemory:           resource.MustParse("192Mi"),
+		},
+	}
+}
+
+func getExporterResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequirements {
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:              resource.MustParse("50m"),
+			corev1.ResourceEphemeralStorage: resource.MustParse("50Mi"),
+			corev1.ResourceMemory:           resource.MustParse("64Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:              resource.MustParse("100m"),
+			corev1.ResourceEphemeralStorage: resource.MustParse("2Gi"),
+			corev1.ResourceMemory:           resource.MustParse("128Mi"),
+		},
+	}
+}
+
+func getInitContainerResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequirements {
+	// You might want to add a separate field in the CRD for init container resources
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("50m"),
+			corev1.ResourceMemory: resource.MustParse("64Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("128Mi"),
+		},
+	}
+}
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -1315,6 +1363,7 @@ fi
 									},
 								},
 							},
+							Resources: getResourceRequirements(valkey),
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "scripts",
@@ -1397,6 +1446,7 @@ fi
 					"1001:1001",
 					"/bitnami/valkey/data",
 				},
+				Resources: getInitContainerResourceRequirements(valkey),
 				SecurityContext: &corev1.SecurityContext{
 					RunAsUser: func(i int64) *int64 { return &i }(0),
 				},

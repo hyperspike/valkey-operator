@@ -67,6 +67,9 @@ type ValkeySpec struct {
 
 	// Persistent volume claim
 	Storage *corev1.PersistentVolumeClaim `json:"storage,omitempty"`
+
+	// Resources requirements and limits for the Valkey Server container
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // ValkeyStatus defines the observed state of Valkey
