@@ -157,11 +157,11 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.upsertStatefulSet(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.balanceNodes(ctx, valkey); err != nil {
-		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
-	}
 	if err := r.checkState(ctx, valkey, password); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
+	}
+	if err := r.balanceNodes(ctx, valkey); err != nil {
+		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
 	}
 
 	return ctrl.Result{}, nil

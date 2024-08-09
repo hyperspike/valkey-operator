@@ -51,10 +51,11 @@ kind: Prometheus
 metadata:
   name: prometheus
 spec:
+  image: quay.io/prometheus/prometheus:v2.54.0
   serviceAccountName: prometheus
   serviceMonitorSelector:
     matchLabels:
-      prometheus: "1"
+      prometheus: prometheus
   resources:
     requests:
       memory: 400Mi
