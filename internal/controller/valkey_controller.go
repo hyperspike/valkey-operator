@@ -675,26 +675,23 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		Password:    password,
 	}
 	if valkey.Spec.TLS {
-		/*
-			ca, err := r.getCACertificate(ctx, valkey)
-			if err != nil {
-				logger.Error(err, "failed to get ca certificate")
-				return err
-			}
-			if ca == "" {
-				return fmt.Errorf("ca certificate not ready")
-			}
-			certpool, err := x509.SystemCertPool()
-			if err != nil {
-				logger.Error(err, "failed to get system cert pool")
-				return err
-			}
-			certpool.AppendCertsFromPEM([]byte(ca))
-		*/
+		ca, err := r.getCACertificate(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get ca certificate")
+			return err
+		}
+		if ca == "" {
+			return fmt.Errorf("ca certificate not ready")
+		}
+		certpool, err := x509.SystemCertPool()
+		if err != nil {
+			logger.Error(err, "failed to get system cert pool")
+			return err
+		}
+		certpool.AppendCertsFromPEM([]byte(ca))
 		opt.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
-			// RootCAs:    certpool,
-			InsecureSkipVerify: true, // #nosec G402
+			RootCAs:    certpool,
 		}
 	}
 	vClient, err := valkeyClient.NewClient(opt)
@@ -1190,8 +1187,10 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 
 	logger.Info("upserting statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
 	tls := "no"
+	endpointType := "ip"
 	if valkey.Spec.TLS {
 		tls = "yes"
+		endpointType = "hostname"
 	}
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1277,7 +1276,8 @@ if [[ "$pod_index" == "0" ]]; then
   export VALKEY_CLUSTER_CREATOR="%s"
   export VALKEY_CLUSTER_REPLICAS="%d"
 fi
-/opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh`, createCluster(valkey), valkey.Spec.Replicas),
+export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
+/opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh`, createCluster(valkey), valkey.Spec.Replicas, valkey.Name+"-headless."+valkey.Namespace+".svc."+valkey.Spec.ClusterDomain),
 							},
 							Env: []corev1.EnvVar{
 								{
@@ -1313,6 +1313,10 @@ fi
 											},
 										},
 									},
+								},
+								{
+									Name:  "VALKEY_CLUSTER_PREFERRED_ENDPOINT_TYPE",
+									Value: endpointType,
 								},
 								{
 									Name:  "VALKEY_AOF_ENABLED",
