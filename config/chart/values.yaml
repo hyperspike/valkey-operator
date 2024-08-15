@@ -9,8 +9,8 @@ controllerManager:
         drop:
         - ALL
     image:
-      repository: ghcr.io/hyperspike/valkey-operator
-      tag: v0.0.11
+      repository: localhost:5000/controller
+      tag: "6"
     resources:
       limits:
         cpu: 500m
