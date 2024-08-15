@@ -13,6 +13,9 @@ endif
 GO := $(shell which go)
 MINIKUBE := $(shell which minikube)
 KUBECTL := $(shell which kubectl)
+VERSION ?= $(shell  if [ ! -z $$(git tag --points-at HEAD) ] ; then git tag --points-at HEAD|cat ; else  git rev-parse --short HEAD|cat; fi )
+SHA ?= $(shell git rev-parse --short HEAD)
+PKG ?= hyperspike.io/valkey-operator
 
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
@@ -25,8 +28,8 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-K8S_VERSION ?= 1.30.3
-CILIUM_VERSION ?= 1.16.0
+K8S_VERSION ?= 1.30.4
+CILIUM_VERSION ?= 1.16.1
 
 V ?= 0
 ifeq ($(V), 1)
@@ -97,8 +100,9 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 manager: manifests generate fmt vet ## Build manager binary.
 	$QCGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(VV) \
 		-trimpath \
-		-gcflags all="-trimpath=/src -trimpath=$(PWD)" \
+		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
+		-ldflags "-s -w -X $(PKG)/cmd.Version=$(VERSION) -X $(PKG)/cmd.Commit=$(SHA)" \
 		-installsuffix cgo \
 		-o $@ cmd/main.go
 
@@ -181,7 +185,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
-CONTROLLER_TOOLS_VERSION ?= v0.15.0
+CONTROLLER_TOOLS_VERSION ?= v0.16.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
 
