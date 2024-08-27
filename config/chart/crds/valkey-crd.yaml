@@ -76,11 +76,9 @@ spec:
                 description: Cluster Domain - used for DNS
                 type: string
               exporterImage:
-                default: docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2
                 description: Exporter Image to use
                 type: string
               image:
-                default: docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0
                 description: Image to use
                 type: string
               nodes:

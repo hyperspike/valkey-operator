@@ -1,3 +1,7 @@
+config:
+  exporterImage: docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2
+  nodes: "3"
+  valkeyImage: docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0
 controllerManager:
   manager:
     args:
@@ -9,8 +13,8 @@ controllerManager:
         drop:
         - ALL
     image:
-      repository: localhost:5000/controller
-      tag: "6"
+      repository: ghcr.io/hyperspike/valkey-operator
+      tag: v0.0.19
     resources:
       limits:
         cpu: 500m
