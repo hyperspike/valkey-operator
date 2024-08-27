@@ -182,24 +182,27 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+HELMIFY := $(LOCALBIN)/helmify-$(HELMIFY_VERSION)
+HELM := $(LOCALBIN)/helm
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
 CONTROLLER_TOOLS_VERSION ?= v0.16.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
+HELMIFY_VERSION ?= v0.4.13
 
 ######################### Helmify
 HELMIFY ?= $(LOCALBIN)/helmify
 
-.PHONY: helmify
-helmify: $(HELMIFY) ## Download helmify locally if necessary.
-$(HELMIFY): $(LOCALBIN)
-	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@v0.4.13
+helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
+	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator-chart
 
-helm: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
-	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir config/chart
+helm-package: helm-gen ## Package Helm chart
+	$Q$(HELM) package valkey-operator-chart --app-version $(VERSION) --version $(VERSION)
 
+helm-publish: helm-package ## Publish Helm chart
+	$Q$(HELM) push valkey-operator-chart-$(VERSION).tgz oci://ghcr.io/hyperspike
 
 .PHONY: minikube tunnel registry-proxy prometheus-proxy
 minikube: ## Spool up a local minikube cluster for development
@@ -242,6 +245,16 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,${GOLANGCI_LINT_VERSION})
+
+.PHONY: helmify
+helmify: $(HELMIFY) ## Download helmify locally if necessary.
+$(HELMIFY): $(LOCALBIN)
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/artttor/helmify/cmd/helmify,${HELMIFY_VERSION})
+
+.PHONY: helm
+helm: $(HELM) ## Download helm locally if necessary.
+$(HELM): $(LOCALBIN)
+	$(call go-install-tool,$(HELM),helm.sh/helm/v3/cmd/helm,latest)
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)

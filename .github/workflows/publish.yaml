@@ -41,3 +41,23 @@ jobs:
           asset_name: install.yaml
           tag: ${{ github.ref }}
           overwrite: true
+  publish-helm:
+    runs-on: ubuntu-latest
+    needs: publish
+    name: Publish Helm Chart
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.22
+          check-latest: true
+      - name: Log in to the Container registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package and Upload Helm Chart
+        run: make publish-helm V=1

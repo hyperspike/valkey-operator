@@ -32,3 +32,5 @@ go.work
 blank.yaml
 cilium/
 manager
+valkey-operator-chart/
+valkey-operator-chart-*.tgz
