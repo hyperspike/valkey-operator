@@ -63,4 +63,4 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Package and Upload Helm Chart
-        run: make publish-helm V=1
+        run: make helm-publish V=1
