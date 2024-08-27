@@ -21,7 +21,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
   upload-assets:
     runs-on: ubuntu-latest
-    requires: publish
+    needs: publish
     name: Upload release assets
     steps:
       - name: Checkout
