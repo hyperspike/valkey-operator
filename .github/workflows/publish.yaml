@@ -10,6 +10,9 @@ on:
       - 'v*'
       - '!pkg*'
 
+env:
+  REGISTRY: ghcr.io
+
 jobs:
   publish:
     runs-on: ubuntu-latest
