@@ -10,9 +10,6 @@ on:
       - 'v*'
       - '!pkg*'
 
-env:
-  REGISTRY: ghcr.io
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -49,7 +46,7 @@ jobs:
     needs: publish
     name: Publish Helm Chart
     permissions:
-      contents: read # for trivy scan upload
+      contents: write
       packages: write
       id-token: write
     steps:
@@ -63,7 +60,7 @@ jobs:
     - name: Log in to the Container registry
       uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
       with:
-        registry: ${{ env.REGISTRY }}
+        registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Package and Upload Helm Chart
