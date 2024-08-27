@@ -20,12 +20,14 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strconv"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -37,7 +39,10 @@ import (
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	hyperspikeiov1 "hyperspike.io/valkey-operator/api/v1"
+	"hyperspike.io/valkey-operator/cfg"
 	"hyperspike.io/valkey-operator/internal/controller"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -132,10 +137,34 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx := ctrl.SetupSignalHandler()
+	k8sClient := mgr.GetClient()
+	cfgMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "valkey-operator-config", // @TODO: make this configurable at build time
+		},
+	}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: "valkey-operator-config"}, cfgMap); err != nil {
+		setupLog.Error(err, "failed to get", "configmap", "valkey-operator-config")
+	}
+	config := cfg.Defaults()
+	for k, v := range cfgMap.Data {
+		if k == "exporterImage" && v != "" {
+			config.ExporterImage = v
+		}
+		if k == "valkeyImage" && v != "" {
+			config.ValkeyImage = v
+		}
+		if k == "nodes" && v != "" {
+			config.Nodes, _ = strconv.Atoi(v)
+		}
+	}
+
 	if err = (&controller.ValkeyReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("valkey-controller"),
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		GlobalConfig: config,
+		Recorder:     mgr.GetEventRecorderFor("valkey-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Valkey")
 		os.Exit(1)
@@ -152,7 +181,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

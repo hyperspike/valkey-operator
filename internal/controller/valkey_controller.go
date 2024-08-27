@@ -47,6 +47,7 @@ import (
 	cmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	hyperv1 "hyperspike.io/valkey-operator/api/v1"
+	globalcfg "hyperspike.io/valkey-operator/cfg"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -81,8 +82,9 @@ func randString(n int) (string, error) {
 // ValkeyReconciler reconciles a Valkey object
 type ValkeyReconciler struct {
 	client.Client
-	Recorder record.EventRecorder
-	Scheme   *runtime.Scheme
+	Recorder     record.EventRecorder
+	Scheme       *runtime.Scheme
+	GlobalConfig *globalcfg.Config
 }
 
 //go:embed scripts/*
@@ -993,10 +995,15 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 	return nil
 }
 
-func exporter(valkey *hyperv1.Valkey) corev1.Container {
+func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
+	image := r.GlobalConfig.ExporterImage
+	if valkey.Spec.ExporterImage != "" {
+		image = valkey.Spec.ExporterImage
+	}
+
 	container := corev1.Container{
 		Name:            Metrics,
-		Image:           valkey.Spec.ExporterImage,
+		Image:           image,
 		ImagePullPolicy: "IfNotPresent",
 		Ports: []corev1.ContainerPort{
 			{
@@ -1192,6 +1199,10 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 		tls = "yes"
 		endpointType = "hostname"
 	}
+	image := r.GlobalConfig.ValkeyImage
+	if valkey.Spec.Image != "" {
+		image = valkey.Spec.Image
+	}
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
@@ -1240,7 +1251,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 					},
 					Containers: []corev1.Container{
 						{
-							Image: valkey.Spec.Image,
+							Image: image,
 							SecurityContext: &corev1.SecurityContext{
 								AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
 								Capabilities: &corev1.Capabilities{
@@ -1448,7 +1459,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 		sts.Spec.Template.Spec.InitContainers = []corev1.Container{
 			{
 				Name:            "volume-permissions",
-				Image:           valkey.Spec.Image,
+				Image:           image,
 				ImagePullPolicy: "IfNotPresent",
 				Command: []string{
 					"/bin/chown",
@@ -1512,7 +1523,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 		})
 	}
 	if valkey.Spec.Prometheus {
-		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, exporter(valkey))
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
 	}
 	if err := controllerutil.SetControllerReference(valkey, sts, r.Scheme); err != nil {
 		return err
@@ -1541,7 +1552,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (replicas)", valkey.Namespace, valkey.Name))
 	}
 	if valkey.Spec.Prometheus && len(sts.Spec.Template.Spec.Containers) == 1 {
-		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, exporter(valkey))
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
 			return err

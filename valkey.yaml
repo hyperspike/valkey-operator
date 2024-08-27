@@ -6,9 +6,10 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: keyval
 spec:
+  nodes: 1
   volumePermissions: true
   prometheus: false
-  tls: false
+  tls: true
   certIssuer: selfsigned
   prometheusLabels:
     prometheus: "1"
