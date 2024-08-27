@@ -93,7 +93,11 @@ lint: golangci-lint ## Run golangci-lint linter
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --fix
+	$Q$(GOLANGCI_LINT) run --fix
+
+.PHONY: gosec
+gosec: gosec-bin ## Run gosec scanner
+	$Q$(GOSEC) ./...
 
 ##@ Build
 
@@ -184,6 +188,7 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 HELMIFY ?= $(LOCALBIN)/helmify-$(HELMIFY_VERSION)
 HELM ?= $(LOCALBIN)/helm-$(HELM_VERSION)
+GOSEC ?= $(LOCALBIN)/gosec-$(GOSEC_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
@@ -192,6 +197,7 @@ ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
 HELMIFY_VERSION ?= v0.4.13
 HELM_VERSION ?= v3.15.4
+GOSEC_VERSION ?= v2.20.0
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
 	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator-chart
@@ -253,6 +259,11 @@ $(HELMIFY): $(LOCALBIN)
 helm: $(HELM) ## Download helm locally if necessary.
 $(HELM): $(LOCALBIN)
 	$(call go-install-tool,$(HELM),helm.sh/helm/v3/cmd/helm,$(HELM_VERSION))
+
+.PHONY: gosec-bin
+gosec-bin: $(GOSEC) ## Download gosec locally if necessary.
+$(GOSEC): $(LOCALBIN)
+	$(call go-install-tool,$(GOSEC),github.com/securego/gosec/v2/cmd/gosec,${GOSEC_VERSION})
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
