@@ -16,4 +16,6 @@ jobs:
     if: github.event_name == 'push' && github.ref_type == 'tag'
     steps:
     - run: |
-        gh release create ${{ github.ref }} --title "Release ${{ github.ref }}" --generate-notes
+        gh release create ${{ github.ref_name }} --title "Release ${{ github.ref_name }}" --generate-notes
+      env:
+        GH_TOKEN: ${{ github.token }}
