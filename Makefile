@@ -181,9 +181,9 @@ KUBECTL ?= $(shell which kubectl)
 KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
-GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
-HELMIFY := $(LOCALBIN)/helmify-$(HELMIFY_VERSION)
-HELM := $(LOCALBIN)/helm
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+HELMIFY ?= $(LOCALBIN)/helmify-$(HELMIFY_VERSION)
+HELM ?= $(LOCALBIN)/helm
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
@@ -191,9 +191,6 @@ CONTROLLER_TOOLS_VERSION ?= v0.16.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
 HELMIFY_VERSION ?= v0.4.13
-
-######################### Helmify
-HELMIFY ?= $(LOCALBIN)/helmify
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
 	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator-chart
@@ -244,12 +241,12 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,${GOLANGCI_LINT_VERSION})
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 .PHONY: helmify
 helmify: $(HELMIFY) ## Download helmify locally if necessary.
 $(HELMIFY): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/artttor/helmify/cmd/helmify,${HELMIFY_VERSION})
+	$(call go-install-tool,$(HELMIFY),github.com/arttor/helmify/cmd/helmify,$(HELMIFY_VERSION))
 
 .PHONY: helm
 helm: $(HELM) ## Download helm locally if necessary.
