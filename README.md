@@ -38,29 +38,22 @@ minikube delete -p north
 
 ## Project Distribution
 
-Following are the steps to build the installer and distribute this project to users.
+### Vanilla Kubernetes Manifests
 
-1. Build the installer for the image built and published in the registry:
+To install the valkey-operator, all you need to do is run the following command:
 
 ```sh
-make build-installer IMG=<some-registry>/valkey-operator:tag
+LATEST=$(curl -s https://api.github.com/repos/hyperspike/valkey-operator/releases/latest | jq -cr .tag_name)
+curl -sL https://github.com/hyperspike/valkey-operator/releases/download/$LATEST/install.yaml | kubectl create -f -
 ```
 
-NOTE: The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without
-its dependencies.
-
-2. Using the installer
-
-Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project, i.e.:
+### Helm
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/hyperspike/valkey-operator/main/dist/install.yaml
+helm install valkey-operator oci://ghcr.io/hyperspike/valkey-operator-chart
 ```
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
