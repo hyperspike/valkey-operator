@@ -183,7 +183,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 HELMIFY ?= $(LOCALBIN)/helmify-$(HELMIFY_VERSION)
-HELM ?= $(LOCALBIN)/helm
+HELM ?= $(LOCALBIN)/helm-$(HELM_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
@@ -191,11 +191,12 @@ CONTROLLER_TOOLS_VERSION ?= v0.16.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
 HELMIFY_VERSION ?= v0.4.13
+HELM_VERSION ?= v3.15.4
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
 	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator-chart
 
-helm-package: helm-gen ## Package Helm chart
+helm-package: helm-gen helm ## Package Helm chart
 	$Q$(HELM) package valkey-operator-chart --app-version $(VERSION) --version $(VERSION)
 
 helm-publish: helm-package ## Publish Helm chart
@@ -251,7 +252,7 @@ $(HELMIFY): $(LOCALBIN)
 .PHONY: helm
 helm: $(HELM) ## Download helm locally if necessary.
 $(HELM): $(LOCALBIN)
-	$(call go-install-tool,$(HELM),helm.sh/helm/v3/cmd/helm,latest)
+	$(call go-install-tool,$(HELM),helm.sh/helm/v3/cmd/helm,$(HELM_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
