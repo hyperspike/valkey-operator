@@ -50,7 +50,8 @@ curl -sL https://github.com/hyperspike/valkey-operator/releases/download/$LATEST
 ### Helm
 
 ```sh
-helm install valkey-operator oci://ghcr.io/hyperspike/valkey-operator-chart
+LATEST=$(curl -s https://api.github.com/repos/hyperspike/valkey-operator/releases/latest | jq -cr .tag_name)
+helm install valkey-operator-chart --namespace valkey-operator-system --create-namespace oci://ghcr.io/hyperspike/valkey-operator-chart --version $LATEST
 ```
 
 ## Contributing
