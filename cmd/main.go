@@ -139,13 +139,21 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 	k8sClient := mgr.GetClient()
+	instanceName := os.Getenv("INSTANCE_NAME")
+	if instanceName == "" {
+		instanceName = os.Getenv("APP_NAME")
+		if instanceName == "" {
+			instanceName = "valkey-operator"
+		}
+	}
+	cmName := instanceName + "-config"
 	cfgMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "valkey-operator-config", // @TODO: make this configurable at build time
+			Name: cmName,
 		},
 	}
-	if err := k8sClient.Get(ctx, types.NamespacedName{Name: "valkey-operator-config"}, cfgMap); err != nil {
-		setupLog.Error(err, "failed to get", "configmap", "valkey-operator-config")
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: cmName}, cfgMap); err != nil {
+		setupLog.Error(err, "failed to get", "configmap", cmName)
 	}
 	config := cfg.Defaults()
 	for k, v := range cfgMap.Data {
