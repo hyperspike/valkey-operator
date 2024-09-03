@@ -8,6 +8,11 @@ on:
     - main
   pull_request:
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
   hadolint:
     runs-on: ubuntu-latest
