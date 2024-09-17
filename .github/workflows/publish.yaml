@@ -10,6 +10,11 @@ on:
       - 'v*'
       - '!pkg*'
 
+permissions:
+  contents: write
+  packages: write
+  # id-token: write # Uncomment this line if you want to do cosign signing
+
 jobs:
   publish:
     runs-on: ubuntu-latest
