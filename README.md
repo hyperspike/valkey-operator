@@ -54,6 +54,13 @@ LATEST=$(curl -s https://api.github.com/repos/hyperspike/valkey-operator/release
 helm install valkey-operator-chart --namespace valkey-operator-system --create-namespace oci://ghcr.io/hyperspike/valkey-operator-chart --version $LATEST
 ```
 
+### Verifying the container image
+
+```sh
+LATEST=$(curl -s https://api.github.com/repos/hyperspike/valkey-operator/releases/latest | jq -cr .tag_name)
+cosign verify ghcr.io/hyperspike/valkey-operator:$LATEST  --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity https://github.com/hyperspike/valkey-operator/.github/workflows/image.yaml@refs/tags/$LATEST
+```
+
 ## Contributing
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
