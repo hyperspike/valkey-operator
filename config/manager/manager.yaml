@@ -18,8 +18,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 data:
   nodes: "3"
-  valkeyImage: "docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0"
-  exporterImage: "docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2"
+  valkeyImage: "docker.io/bitnami/valkey-cluster:8.0.0-debian-12-r0"
+  exporterImage: "docker.io/bitnami/redis-exporter:1.63.0-debian-12-r0"
 ---
 apiVersion: apps/v1
 kind: Deployment
