@@ -217,7 +217,7 @@ minikube: ## Spool up a local minikube cluster for development
 		CERTMANAGER_VERSION=$(CERTMANAGER_VERSION) \
 		TLS=$(TLS) \
 		PROMETHEUS=$(PROMETHEUS) \
-		scripts/minikube.sh
+		hack/minikube.sh
 
 .PHONY: quickstart
 quickstart: minikube ## Install the operator into the minikube cluster and deploy the sample CR use the TLS and PROMETHEUS variables to enable those features
