@@ -29,7 +29,7 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 K8S_VERSION ?= 1.31.1
-CILIUM_VERSION ?= 1.16.1
+CILIUM_VERSION ?= 1.16.2
 
 V ?= 0
 ifeq ($(V), 1)
@@ -221,7 +221,8 @@ minikube: ## Spool up a local minikube cluster for development
 
 .PHONY: quickstart
 quickstart: minikube ## Install the operator into the minikube cluster and deploy the sample CR use the TLS and PROMETHEUS variables to enable those features
-	$Q$(KUBECTL) apply -f https://raw.githubusercontent.com/hyperspike/valkey-operator/main/dist/install.yaml
+	$QLATEST=$(curl -s https://api.github.com/repos/hyperspike/valkey-operator/releases/latest | jq -cr .tag_name) \
+		&& curl -sL https://github.com/hyperspike/valkey-operator/releases/download/$$LATEST/install.yaml | kubectl create -f -
 	$Q(if [ ! -z $$TLS ] ; then TLS_VALUE=true ; else TLS_VALUE=false ; fi ; if [ ! -z $$PROMETHEUS ] ; then PROMETHEUS_VALUE=true ; else PROMETHEUS_VALUE=false ; fi ;  sed -e "s/@TLS@/$$TLS_VALUE/" -e "s/@PROMETHEUS@/$$PROMETHEUS_VALUE/" valkey.yml.tpl | $(KUBECTL) apply -f - )
 
 tunnel: ## turn on minikube's tunnel to test ingress and get UI access

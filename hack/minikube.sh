@@ -60,8 +60,6 @@ data:
 		--set enableCiliumEndpointSlice=true \
 		--set ipam.operator.clusterPoolIPv4PodCIDRList=$podcidr  \
 		--set ipv4NativeRoutingCIDR=10.0.0.0/8 \
-		--set tunnel=disabled \
-		--set tunnelProtocol="" \
 		--set routingMode="native" \
 		--set autoDirectNodeRoutes=true \
 		--set operator.replicas=1 \
@@ -87,14 +85,16 @@ data:
 		--set externalIPs.enabled=true \
 		--set bgpControlPlane.enabled=true \
 		--set endpointRoutes.enabled=true \
-		--set endpointStatus.enabled=true \
-		--set endpointStatus.status=policy \
 		--set nodePort.enabled=true \
 		--set authentication.enabled=true \
 		--set authentication.mutual.spire.enabled=true \
 		--set authentication.mutual.spire.install.enabled=true \
 		--set authentication.mutual.spire.serverAddress=spire-server.cilium-spire.svc.cluster.$name:8081 \
 		--set k8sServicePort=8443 >> .cni-$name.yaml
+		#--set tunnel=disabled \
+		#--set tunnelProtocol="" \
+		#--set endpointStatus.enabled=true \
+		#--set endpointStatus.status=policy \
 		#--set clustermesh.useAPIServer=true \
 		#--set clustermesh.config.enabled=true \
 		#--set encryption.enabled=true \
