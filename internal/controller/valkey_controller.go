@@ -1559,6 +1559,29 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (exporter)", valkey.Namespace, valkey.Name))
 	}
+	if sts.Spec.Template.Spec.Containers[0].Image != image {
+		sts.Spec.Template.Spec.Containers[0].Image = image
+		if valkey.Spec.VolumePermissions {
+			sts.Spec.Template.Spec.InitContainers[0].Image = image
+		}
+		if err := r.Update(ctx, sts); err != nil {
+			logger.Error(err, "failed to update statefulset image", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (image)", valkey.Namespace, valkey.Name))
+	}
+	exporterImage := r.GlobalConfig.ExporterImage
+	if valkey.Spec.ExporterImage != "" {
+		exporterImage = valkey.Spec.ExporterImage
+	}
+	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != exporterImage {
+		sts.Spec.Template.Spec.Containers[1].Image = exporterImage
+		if err := r.Update(ctx, sts); err != nil {
+			logger.Error(err, "failed to update statefulset exporter image", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (exporter image)", valkey.Namespace, valkey.Name))
+	}
 
 	return nil
 }
