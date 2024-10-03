@@ -200,6 +200,7 @@ HELM_VERSION ?= v3.15.4
 GOSEC_VERSION ?= v2.20.0
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
+	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator
 	$Qsed s@\\\(app.kubernetes.io/name\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
 	$Qsed s@\\\(app.kubernetes.io/instance\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
