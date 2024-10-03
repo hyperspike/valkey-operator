@@ -8,8 +8,8 @@ metadata:
 spec:
   nodes: 1
   volumePermissions: true
-  prometheus: false
+  prometheus: true
   tls: true
   certIssuer: selfsigned
   prometheusLabels:
-    prometheus: "1"
+    prometheus: prometheus
