@@ -19,15 +19,18 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -61,6 +64,15 @@ func init() {
 	utilruntime.Must(monitoringv1.AddToScheme(scheme))
 	utilruntime.Must(certv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+}
+
+func getOperatorNamespace() (string, error) {
+	nsBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		return "", err
+	}
+	ns := strings.TrimSpace(string(nsBytes))
+	return ns, nil
 }
 
 func main() {
@@ -138,7 +150,7 @@ func main() {
 	}
 
 	ctx := ctrl.SetupSignalHandler()
-	k8sClient := mgr.GetClient()
+	// k8sClient :=
 	instanceName := os.Getenv("INSTANCE_NAME")
 	if instanceName == "" {
 		instanceName = os.Getenv("APP_NAME")
@@ -152,8 +164,22 @@ func main() {
 			Name: cmName,
 		},
 	}
-	if err := k8sClient.Get(ctx, types.NamespacedName{Name: cmName}, cfgMap); err != nil {
-		setupLog.Error(err, "failed to get", "configmap", cmName)
+	k8sCfg, err := rest.InClusterConfig()
+	if err != nil {
+		setupLog.Error(err, "failed to get in-cluster config")
+	}
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(k8sCfg)
+	if err != nil {
+		setupLog.Error(err, "failed to get in-cluster config")
+	}
+	ns, err := getOperatorNamespace()
+	if err != nil {
+		setupLog.Error(err, "failed to get namespace")
+	}
+	cfgMap, err = clientset.CoreV1().ConfigMaps(ns).Get(ctx, cmName, metav1.GetOptions{})
+	if err != nil {
+		setupLog.Error(err, "failed to get global config")
 	}
 	config := cfg.Defaults()
 	for k, v := range cfgMap.Data {
