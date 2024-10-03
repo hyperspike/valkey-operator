@@ -11,8 +11,8 @@ type Config struct {
 
 func Defaults() *Config {
 	return &Config{
-		ExporterImage: "docker.io/bitnami/redis-exporter:1.62.0-debian-12-r2",
-		ValkeyImage:   "docker.io/bitnami/valkey-cluster:7.2.6-debian-12-r0",
+		ExporterImage: "docker.io/bitnami/redis-exporter:1.63.0-debian-12-r0",
+		ValkeyImage:   "docker.io/bitnami/valkey-cluster:8.0.0-debian-12-r0",
 		Nodes:         3,
 	}
 }
