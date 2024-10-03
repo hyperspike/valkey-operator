@@ -200,15 +200,15 @@ HELM_VERSION ?= v3.15.4
 GOSEC_VERSION ?= v2.20.0
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
-	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator-chart
-	$Qsed s@\\\(app.kubernetes.io/name\\\)@\'\\\1\'@ -i valkey-operator-chart/templates/deployment.yaml
-	$Qsed s@\\\(app.kubernetes.io/instance\\\)@\'\\\1\'@ -i valkey-operator-chart/templates/deployment.yaml
+	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator
+	$Qsed s@\\\(app.kubernetes.io/name\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
+	$Qsed s@\\\(app.kubernetes.io/instance\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
 
 helm-package: helm-gen helm ## Package Helm chart
-	$Q$(HELM) package valkey-operator-chart --app-version $(VERSION) --version $(VERSION)
+	$Q$(HELM) package valkey-operator --app-version $(VERSION) --version $(VERSION)-chart
 
 helm-publish: helm-package ## Publish Helm chart
-	$Q$(HELM) push valkey-operator-chart-$(VERSION).tgz oci://ghcr.io/hyperspike
+	$Q$(HELM) push valkey-operator-$(VERSION)-chart.tgz oci://ghcr.io/hyperspike
 
 .PHONY: minikube tunnel registry-proxy prometheus-proxy
 minikube: ## Spool up a local minikube cluster for development

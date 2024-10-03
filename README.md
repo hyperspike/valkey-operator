@@ -51,7 +51,7 @@ curl -sL https://github.com/hyperspike/valkey-operator/releases/download/$LATEST
 
 ```sh
 LATEST=$(curl -s https://api.github.com/repos/hyperspike/valkey-operator/releases/latest | jq -cr .tag_name)
-helm install valkey-operator-chart --namespace valkey-operator-system --create-namespace oci://ghcr.io/hyperspike/valkey-operator-chart --version $LATEST
+helm install valkey-operator --namespace valkey-operator-system --create-namespace oci://ghcr.io/hyperspike/valkey-operator --version $LATEST-chart
 ```
 
 ### Verifying the container image
