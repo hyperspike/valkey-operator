@@ -1,5 +1,6 @@
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
+IMG_SIDE ?= sidecar:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.1
 
@@ -106,26 +107,37 @@ manager: manifests generate fmt vet ## Build manager binary.
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
-		-ldflags "-s -w -X $(PKG)/cmd.Version=$(VERSION) -X $(PKG)/cmd.Commit=$(SHA)" \
+		-ldflags "-s -w -X $(PKG)/cmd/manager.Version=$(VERSION) -X $(PKG)/cmd/manager.Commit=$(SHA)" \
 		-installsuffix cgo \
-		-o $@ cmd/main.go
+		-o $@ cmd/manager/main.go
 
-build: manager
+sidecar: manifests generate fmt vet ## Build sidecar binary.
+	$QCGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(VV) \
+		-trimpath \
+		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
+		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
+		-ldflags "-s -w -X $(PKG)/cmd/sidecar.Version=$(VERSION) -X $(PKG)/cmd/sidecar.Commit=$(SHA)" \
+		-installsuffix cgo \
+		-o $@ cmd/sidecar/main.go
+
+build: manager sidecar ## Build manager and sidecar binaries.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	go run ./cmd/manager/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: manager ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build -t ${IMG} -f Dockerfile.
+	$(CONTAINER_TOOL) build -t ${IMG_SIDECAR} -f Dockerfile.sidecar .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
+	$(CONTAINER_TOOL) push ${IMG_SIDECAR}
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
