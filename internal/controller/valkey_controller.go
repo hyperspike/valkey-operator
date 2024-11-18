@@ -1543,7 +1543,8 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 	}
 
 	if *sts.Spec.Replicas != valkey.Spec.Nodes {
-		sts.Spec.Replicas = &valkey.Spec.Nodes
+		replicas := valkey.Spec.Nodes * (valkey.Spec.Replicas + 1)
+		sts.Spec.Replicas = &replicas
 		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getNodeNames(valkey)
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
