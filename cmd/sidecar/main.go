@@ -37,9 +37,9 @@ var (
 	/*
 		BuildVersion, BuildDate, BuildCommitSha are filled in by the build script
 	*/
-	BuildVersion   = "<<< filled in by build >>>"
-	BuildDate      = "<<< filled in by build >>>"
-	BuildCommitSha = "<<< filled in by build >>>"
+	Version   = "<<< filled in by build >>>"
+	BuildDate = "<<< filled in by build >>>"
+	Commit    = "<<< filled in by build >>>"
 )
 
 func getEnv(key string, defaultVal string) string {
@@ -119,7 +119,7 @@ func main() {
 	flag.Parse()
 
 	log.Infof("Redis Metrics Exporter %s    build date: %s    sha1: %s    Go: %s    GOOS: %s    GOARCH: %s",
-		BuildVersion, BuildDate, BuildCommitSha,
+		Version, BuildDate, Commit,
 		runtime.Version(),
 		runtime.GOOS,
 		runtime.GOARCH,
@@ -197,8 +197,8 @@ func main() {
 			RedisPwdFile:                   *redisPwdFile,
 			Registry:                       registry,
 			BuildInfo: exporter.BuildInfo{
-				Version:   BuildVersion,
-				CommitSha: BuildCommitSha,
+				Version:   Version,
+				CommitSha: Commit,
 				Date:      BuildDate,
 			},
 		},

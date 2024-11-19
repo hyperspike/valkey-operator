@@ -16,6 +16,7 @@ GO := $(shell which go)
 MINIKUBE := $(shell which minikube)
 KUBECTL := $(shell which kubectl)
 VERSION ?= $(shell  if [ ! -z $$(git tag --points-at HEAD) ] ; then git tag --points-at HEAD|cat ; else  git rev-parse --short HEAD|cat; fi )
+DATE ?= $(shell date -u  +'%Y%m%d')
 SHA ?= $(shell git rev-parse --short HEAD)
 PKG ?= hyperspike.io/valkey-operator
 
@@ -109,7 +110,7 @@ manager: manifests generate fmt vet ## Build manager binary.
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
-		-ldflags "-s -w -X $(PKG)/cmd/manager.Version=$(VERSION) -X $(PKG)/cmd/manager.Commit=$(SHA)" \
+		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA)" \
 		-installsuffix cgo \
 		-o $@ cmd/manager/main.go
 
@@ -118,7 +119,7 @@ sidecar: manifests generate fmt vet ## Build sidecar binary.
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
-		-ldflags "-s -w -X $(PKG)/cmd/sidecar.Version=$(VERSION) -X $(PKG)/cmd/sidecar.Commit=$(SHA)" \
+		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA)" \
 		-installsuffix cgo \
 		-o $@ cmd/sidecar/main.go
 
@@ -132,7 +133,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: manager ## Build docker image with the manager.
+docker-build: manager sidecar ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG_CONTROLLER} -f Dockerfile.controller .
 	$(CONTAINER_TOOL) build -t ${IMG_SIDECAR} -f Dockerfile.sidecar .
 	$(CONTAINER_TOOL) build -t ${IMG_VALKEY} --build-arg VALKEY_VERSION=$(VALKEY_VERSION) -f Dockerfile.valkey .
