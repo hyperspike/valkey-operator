@@ -28,8 +28,8 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-K8S_VERSION ?= 1.31.1
-CILIUM_VERSION ?= 1.16.2
+K8S_VERSION ?= 1.31.2
+CILIUM_VERSION ?= 1.16.3
 
 V ?= 0
 ifeq ($(V), 1)
@@ -173,6 +173,29 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
+##@ Quickstart
+
+.PHONY: minikube
+minikube: ## Spool up a local minikube cluster for development
+	$QK8S_VERSION=$(K8S_VERSION) \
+		CILIUM_VERSION=$(CILIUM_VERSION) \
+		CERTMANAGER_VERSION=$(CERTMANAGER_VERSION) \
+		TLS=$(TLS) \
+		PROMETHEUS=$(PROMETHEUS) \
+		hack/minikube.sh
+
+.PHONY: quickstart install-operator install-cr
+quickstart: minikube install-operator install-cr ## Install the operator into the minikube cluster and deploy the sample CR use the TLS and PROMETHEUS variables to enable those features
+
+install-operator: ## Install the operator into the minikube cluster
+	$QLATEST=$(shell curl -s https://api.github.com/repos/hyperspike/valkey-operator/releases/latest | jq -Mr .tag_name) \
+		&& curl -sL https://github.com/hyperspike/valkey-operator/releases/download/$$LATEST/install.yaml | kubectl apply -f -
+install-cr: ## Install the sample CR into the minikube cluster
+	$Q(if [ ! -z $$TLS ] ; then TLS_VALUE=true ; else TLS_VALUE=false ; fi ; if [ ! -z $$PROMETHEUS ] ; then PROMETHEUS_VALUE=true ; else PROMETHEUS_VALUE=false ; fi ;  sed -e "s/@TLS@/$$TLS_VALUE/" -e "s/@PROMETHEUS@/$$PROMETHEUS_VALUE/" valkey.yml.tpl | $(KUBECTL) apply -f - )
+
+minikube-delete: ## Delete the minikube cluster
+	$Qminikube delete -p north
+
 ##@ Dependencies
 
 ## Location to install dependencies to
@@ -211,21 +234,7 @@ helm-package: helm-gen helm ## Package Helm chart
 helm-publish: helm-package ## Publish Helm chart
 	$Q$(HELM) push valkey-operator-$(VERSION)-chart.tgz oci://ghcr.io/hyperspike
 
-.PHONY: minikube tunnel registry-proxy prometheus-proxy
-minikube: ## Spool up a local minikube cluster for development
-	$QK8S_VERSION=$(K8S_VERSION) \
-		CILIUM_VERSION=$(CILIUM_VERSION) \
-		CERTMANAGER_VERSION=$(CERTMANAGER_VERSION) \
-		TLS=$(TLS) \
-		PROMETHEUS=$(PROMETHEUS) \
-		hack/minikube.sh
-
-.PHONY: quickstart
-quickstart: minikube ## Install the operator into the minikube cluster and deploy the sample CR use the TLS and PROMETHEUS variables to enable those features
-	$QLATEST=$(curl -s https://api.github.com/repos/hyperspike/valkey-operator/releases/latest | jq -cr .tag_name) \
-		&& curl -sL https://github.com/hyperspike/valkey-operator/releases/download/$$LATEST/install.yaml | kubectl create -f -
-	$Q(if [ ! -z $$TLS ] ; then TLS_VALUE=true ; else TLS_VALUE=false ; fi ; if [ ! -z $$PROMETHEUS ] ; then PROMETHEUS_VALUE=true ; else PROMETHEUS_VALUE=false ; fi ;  sed -e "s/@TLS@/$$TLS_VALUE/" -e "s/@PROMETHEUS@/$$PROMETHEUS_VALUE/" valkey.yml.tpl | $(KUBECTL) apply -f - )
-
+.PHONY: tunnel registry-proxy prometheus-proxy
 tunnel: ## turn on minikube's tunnel to test ingress and get UI access
 	$Q$(MINIKUBE) tunnel -p north
 
