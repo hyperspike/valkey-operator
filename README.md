@@ -32,7 +32,7 @@ make quickstart TLS=1 PROMETHEUS=1
 ### To Uninstall
 
 ```sh
-minikube delete -p north
+make minikube-delete
 ```
 
 
