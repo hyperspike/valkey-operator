@@ -1,6 +1,7 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
-IMG_SIDE ?= sidecar:latest
+IMG_CONTROLLER ?= controller:latest
+IMG_SIDECAR ?= sidecar:latest
+IMG_VALKEY ?= valkey:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.1
 
@@ -131,13 +132,15 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: manager ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} -f Dockerfile.
+	$(CONTAINER_TOOL) build -t ${IMG_CONTROLLER} -f Dockerfile.controller .
 	$(CONTAINER_TOOL) build -t ${IMG_SIDECAR} -f Dockerfile.sidecar .
+	$(CONTAINER_TOOL) build -t ${IMG_VALKEY} -f Dockerfile.valkey .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+	$(CONTAINER_TOOL) push ${IMG_CONTROLLER}
 	$(CONTAINER_TOOL) push ${IMG_SIDECAR}
+	$(CONTAINER_TOOL) push ${IMG_VALKEY}
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -149,17 +152,17 @@ PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile.controller > Dockerfile.controller.cross
 	- $(CONTAINER_TOOL) buildx create --name valkey-operator-builder
 	$(CONTAINER_TOOL) buildx use valkey-operator-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG_CONTROLLER} -f Dockerfile.controller.cross .
 	- $(CONTAINER_TOOL) buildx rm valkey-operator-builder
-	rm Dockerfile.cross
+	rm Dockerfile.controller.cross
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	$Qmkdir -p dist
-	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
 	$Q$(KUSTOMIZE) build config/default > dist/install.yaml
 
 ##@ Deployment
@@ -178,7 +181,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
@@ -235,7 +238,7 @@ HELM_VERSION ?= v3.15.4
 GOSEC_VERSION ?= v2.20.0
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
-	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
 	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator
 	$Qsed s@\\\(app.kubernetes.io/name\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
 	$Qsed s@\\\(app.kubernetes.io/instance\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
