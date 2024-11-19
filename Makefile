@@ -32,6 +32,7 @@ SHELL = /usr/bin/env bash -o pipefail
 
 K8S_VERSION ?= 1.31.2
 CILIUM_VERSION ?= 1.16.3
+VALKEY_VERSION ?= 8.0.1
 
 V ?= 0
 ifeq ($(V), 1)
@@ -134,7 +135,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 docker-build: manager ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG_CONTROLLER} -f Dockerfile.controller .
 	$(CONTAINER_TOOL) build -t ${IMG_SIDECAR} -f Dockerfile.sidecar .
-	$(CONTAINER_TOOL) build -t ${IMG_VALKEY} -f Dockerfile.valkey .
+	$(CONTAINER_TOOL) build -t ${IMG_VALKEY} --build-arg VALKEY_VERSION=$(VALKEY_VERSION) -f Dockerfile.valkey .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
