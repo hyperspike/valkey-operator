@@ -996,7 +996,7 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 }
 
 func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
-	image := r.GlobalConfig.ExporterImage
+	image := r.GlobalConfig.SidecarImage
 	if valkey.Spec.ExporterImage != "" {
 		image = valkey.Spec.ExporterImage
 	}
@@ -1571,7 +1571,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (image)", valkey.Namespace, valkey.Name))
 	}
-	exporterImage := r.GlobalConfig.ExporterImage
+	exporterImage := r.GlobalConfig.SidecarImage
 	if valkey.Spec.ExporterImage != "" {
 		exporterImage = valkey.Spec.ExporterImage
 	}

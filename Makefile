@@ -1,9 +1,9 @@
 # Image URL to use all building/pushing image targets
-IMG_CONTROLLER ?= controller:latest
-IMG_SIDECAR ?= sidecar:latest
-IMG_VALKEY ?= valkey:latest
+IMG_CONTROLLER ?= ghcr.io/hyperspike/valkey-operator:$(VERSION)
+IMG_SIDECAR ?= ghcr.io/hyperspike/valkey-sidecar:$(VALKEY_VERSION)
+IMG_VALKEY ?= ghcr.io/hyperspike/valkey:$(VALKEY_VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.31.1
+ENVTEST_K8S_VERSION = 1.31.2
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -110,7 +110,8 @@ manager: manifests generate fmt vet ## Build manager binary.
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
-		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA)" \
+		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA) \
+			-X $(PKG)/cfg.DefaultSidecarImage=$(IMG_SIDECAR) -X $(PKG)/cfg.DefaultValkeyImage=$(IMG_VALKEY)" \
 		-installsuffix cgo \
 		-o $@ cmd/manager/main.go
 
@@ -119,7 +120,8 @@ sidecar: manifests generate fmt vet ## Build sidecar binary.
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
-		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA)" \
+		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA) \
+			-X $(PKG)/cfg.DefaultSidecarImage=$(IMG_SIDECAR) -X $(PKG)/cfg.DefaultValkeyImage=$(IMG_VALKEY)" \
 		-installsuffix cgo \
 		-o $@ cmd/sidecar/main.go
 
