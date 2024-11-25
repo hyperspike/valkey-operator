@@ -82,6 +82,16 @@ spec:
               externalAccess:
                 description: External access configuration
                 properties:
+                  certIssuer:
+                    description: Cert Issuer for external access TLS certificate
+                    type: string
+                  certIssuerType:
+                    default: ClusterIssuer
+                    description: Cert Issuer Type for external access TLS certificate
+                    enum:
+                    - ClusterIssuer
+                    - Issuer
+                    type: string
                   enabled:
                     default: false
                     description: Enable external access
@@ -109,6 +119,9 @@ spec:
                         type: object
                       extraConfig:
                         description: Extra Envoy configuration
+                        type: string
+                      hostname:
+                        description: External Hostname for the proxy
                         type: string
                       image:
                         default: envoyproxy/envoy:v1.32.1

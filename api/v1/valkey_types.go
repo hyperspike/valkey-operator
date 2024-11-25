@@ -96,6 +96,14 @@ type ExternalAccess struct {
 	// LoadBalancer Settings
 	LoadBalancer *LoadBalancerSettings `json:"loadBalancer,omitempty"`
 
+	// Cert Issuer for external access TLS certificate
+	CertIssuer string `json:"certIssuer,omitempty"`
+
+	// Cert Issuer Type for external access TLS certificate
+	// +kubebuilder:default:="ClusterIssuer"
+	// +kubebuilder:validation:Enum=ClusterIssuer;Issuer
+	CertIssuerType string `json:"certIssuerType,omitempty"`
+
 	// Support External DNS
 	// +kubebuilder:default:=false
 	ExternalDNS bool `json:"externalDNS,omitempty"`
@@ -118,6 +126,9 @@ type ProxySettings struct {
 	// Replicas for the proxy
 	// +kubebuilder:default:=1
 	Replicas *int32 `json:"replicas,omitempty"`
+
+	// External Hostname for the proxy
+	Hostname string `json:"hostname,omitempty"`
 }
 
 // LoadBalancerSettings defines the load balancer settings
