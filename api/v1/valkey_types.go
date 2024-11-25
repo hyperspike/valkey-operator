@@ -35,9 +35,9 @@ type ValkeySpec struct {
 	// Exporter Image to use
 	ExporterImage string `json:"exporterImage,omitempty"`
 
-	// Number of nodes
+	// Number of shards
 	// +kubebuilder:default:=3
-	Nodes int32 `json:"nodes,omitempty"`
+	Shards int32 `json:"nodes,omitempty"`
 
 	// Number of replicas
 	// +kubebuilder:default:=0
@@ -72,6 +72,58 @@ type ValkeySpec struct {
 
 	// Resources requirements and limits for the Valkey Server container
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// External access configuration
+	ExternalAccess *ExternalAccess `json:"externalAccess,omitempty"`
+}
+
+// ExternalAccess defines the external access configuration
+type ExternalAccess struct {
+	// Enable external access
+	// +kubebuilder:default:=false
+	Enabled bool `json:"enabled,omitempty"`
+
+	// External access type
+	// LoadBalancer or Proxy, the LoadBalancer type will create a LoadBalancer service for each Valkey Shard (master node)
+	// The Proxy type will create a single LoadBalancer service and use an envoy proxy to route traffic to the Valkey Shards
+	// +kubebuilder:default:=Proxy
+	// +kubebuilder:validation:Enum=LoadBalancer;Proxy
+	Type string `json:"type,omitempty"`
+
+	// Proxy Settings
+	Proxy *ProxySettings `json:"proxy,omitempty"`
+
+	// LoadBalancer Settings
+	LoadBalancer *LoadBalancerSettings `json:"loadBalancer,omitempty"`
+
+	// Support External DNS
+	// +kubebuilder:default:=false
+	ExternalDNS bool `json:"externalDNS,omitempty"`
+}
+
+// ProxySettings defines the proxy settings
+type ProxySettings struct {
+	// Image to use for the proxy
+	// +kubebuilder:default:="envoyproxy/envoy:v1.32.1"
+	Image string `json:"image,omitempty"`
+	// Resources requirements and limits for the proxy container
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Extra Envoy configuration
+	ExtraConfig string `json:"extraConfig,omitempty"`
+
+	// Annotations for the proxy service
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// Replicas for the proxy
+	// +kubebuilder:default:=1
+	Replicas *int32 `json:"replicas,omitempty"`
+}
+
+// LoadBalancerSettings defines the load balancer settings
+type LoadBalancerSettings struct {
+	// Annotations for the load balancer service
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // ValkeyStatus defines the observed state of Valkey
