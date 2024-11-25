@@ -55,7 +55,9 @@ import (
 )
 
 const (
-	Metrics = "metrics"
+	Metrics      = "metrics"
+	LoadBalancer = "LoadBalancer"
+	ValkeyProxy  = "valkey-proxy"
 )
 
 func init() {
@@ -114,7 +116,7 @@ var scripts embed.FS
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.18.2/pkg/reconcile
-func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) { // nolint:gocyclo
 	_ = log.FromContext(ctx)
 
 	valkey := &hyperv1.Valkey{}
@@ -151,7 +153,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if externalAccess {
 		externalType = valkey.Spec.ExternalAccess.Type
 	}
-	if externalAccess && externalType == "LoadBalancer" {
+	if externalAccess && externalType == LoadBalancer {
 		if err := r.upsertExternalAccessLBSvc(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -187,7 +189,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.checkState(ctx, valkey, password); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
 	}
-	if externalType != "LoadBalancer" {
+	if externalType != LoadBalancer {
 		if err := r.balanceNodes(ctx, valkey); err != nil {
 			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
 		}
@@ -195,7 +197,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if !valkey.Status.Ready {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
 	}
-	if externalAccess && externalType == "LoadBalancer" {
+	if externalAccess && externalType == LoadBalancer {
 		if err := r.setClusterAnnounceIp(ctx, valkey); err != nil {
 			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
 		}
@@ -514,7 +516,7 @@ func (r *ValkeyReconciler) fetchExternalIPs(ctx context.Context, valkey *hyperv1
 	for _, svc := range svcs.Items {
 		if svc.Labels["app.kubernetes.io/component"] == "valkey-external" && svc.Labels["app.kubernetes.io/instance"] == valkey.Name {
 			podName := strings.Replace(svc.Name, "-external", "", -1)
-			if svc.Status.LoadBalancer.Ingress == nil || len(svc.Status.LoadBalancer.Ingress) == 0 {
+			if svc.Status.LoadBalancer.Ingress == nil || len(svc.Status.LoadBalancer.Ingress) == 0 { // nolint:gosimple
 				logger.Info("external ip is empty", "valkey", valkey.Name, "namespace", valkey.Namespace)
 				return nil, nil
 			}
@@ -596,7 +598,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySvc(ctx context.Context, val
 	logger.Info("upserting external proxy load balancer service")
 
 	proxyLabels := labels(valkey)
-	proxyLabels["app.kubernetes.io/component"] = "valkey-proxy"
+	proxyLabels["app.kubernetes.io/component"] = ValkeyProxy
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name + "-proxy",
@@ -660,7 +662,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySecret(ctx context.Context, 
 		return err
 	}
 	proxyLabels := labels(valkey)
-	proxyLabels["app.kubernetes.io/component"] = "valkey-proxy"
+	proxyLabels["app.kubernetes.io/component"] = ValkeyProxy
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name + "-proxy",
@@ -750,7 +752,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxyDeployment(ctx context.Conte
 	logger.Info("upserting external proxy deployment")
 
 	proxyLabels := labels(valkey)
-	proxyLabels["app.kubernetes.io/component"] = "valkey-proxy"
+	proxyLabels["app.kubernetes.io/component"] = ValkeyProxy
 
 	proxyEnvoyConfigMap := valkey.Name + "-proxy"
 
@@ -1134,74 +1136,6 @@ func removePort(addr string) string {
 		return strings.Split(addr, ":")[0]
 	}
 	return addr
-}
-
-type valkeyNode struct {
-	id   string
-	host string
-	addr string
-}
-
-func (r *ValkeyReconciler) getClusterNodes(ctx context.Context, valkey *hyperv1.Valkey, target string) ([]valkeyNode, error) {
-	logger := log.FromContext(ctx)
-
-	nodes := []valkeyNode{}
-	password, err := r.GetPassword(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get password")
-		return nil, err
-	}
-	opt := valkeyClient.ClientOption{
-		InitAddress: []string{target},
-		Password:    password,
-	}
-	if valkey.Spec.TLS {
-		ca, err := r.getCACertificate(ctx, valkey)
-		if err != nil {
-			logger.Error(err, "failed to get ca certificate")
-			return nil, err
-		}
-		if ca == "" {
-			return nil, fmt.Errorf("ca certificate not ready")
-		}
-		certpool, err := x509.SystemCertPool()
-		if err != nil {
-			logger.Error(err, "failed to get system cert pool")
-			return nil, err
-		}
-		certpool.AppendCertsFromPEM([]byte(ca))
-		opt.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			RootCAs:    certpool,
-		}
-	}
-	vClient, err := valkeyClient.NewClient(opt)
-	if err != nil {
-		logger.Error(err, "failed to create valkey client", "valkey", valkey.Name, "namespace", valkey.Namespace)
-		return nil, err
-	}
-	defer vClient.Close()
-	if err := vClient.Do(ctx, vClient.B().Ping().Build()).Error(); err != nil {
-		logger.Error(err, "failed to ping valkey", "valkey", valkey.Name, "namespace", valkey.Namespace, "target", target)
-		return nil, err
-	}
-	output, err := vClient.Do(ctx, vClient.B().ClusterNodes().Build()).ToString()
-	if err != nil {
-		logger.Error(err, "failed to get nodes", "valkey", valkey.Name, "namespace", valkey.Namespace, "target", target)
-		return nil, err
-	}
-	for _, node := range strings.Split(output, "\n") {
-		if node == "" {
-			continue
-		}
-		line := strings.Split(node, " ")
-		id := strings.ReplaceAll(line[0], "txt:", "")
-		addr := removePort(line[1])
-		host := strings.Split(addr, ":")[0]
-		nodes = append(nodes, valkeyNode{id: id, host: host, addr: addr})
-	}
-
-	return nodes, nil
 }
 
 func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint: gocyclo
