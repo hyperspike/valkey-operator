@@ -1,6 +1,6 @@
 # Image URL to use all building/pushing image targets
 IMG_CONTROLLER ?= ghcr.io/hyperspike/valkey-operator:$(VERSION)
-IMG_SIDECAR ?= ghcr.io/hyperspike/valkey-sidecar:$(VALKEY_VERSION)
+IMG_SIDECAR ?= ghcr.io/hyperspike/valkey-sidecar:$(VERSION)
 IMG_VALKEY ?= ghcr.io/hyperspike/valkey:$(VALKEY_VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 

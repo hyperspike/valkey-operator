@@ -25,7 +25,6 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -91,7 +90,6 @@ func main() {
 		streamsExcludeConsumerMetrics  = flag.Bool("streams-exclude-consumer-metrics", getEnvBool("REDIS_EXPORTER_STREAMS_EXCLUDE_CONSUMER_METRICS", false), "Don't collect per consumer metrics for streams (decreases cardinality)")
 		countKeys                      = flag.String("count-keys", getEnv("REDIS_EXPORTER_COUNT_KEYS", ""), "Comma separated list of patterns to count (eg: 'db0=production_*,db3=sessions:*'), searched for with SCAN")
 		checkKeysBatchSize             = flag.Int64("check-keys-batch-size", getEnvInt64("REDIS_EXPORTER_CHECK_KEYS_BATCH_SIZE", 1000), "Approximate number of keys to process in each execution, larger value speeds up scanning.\nWARNING: Still Redis is a single-threaded app, huge COUNT can affect production environment.")
-		scriptPath                     = flag.String("script", getEnv("REDIS_EXPORTER_SCRIPT", ""), "Comma separated list of path(s) to Redis Lua script(s) for gathering extra metrics")
 		listenAddress                  = flag.String("web.listen-address", getEnv("REDIS_EXPORTER_WEB_LISTEN_ADDRESS", ":9121"), "Address to listen on for web interface and telemetry.")
 		metricPath                     = flag.String("web.telemetry-path", getEnv("REDIS_EXPORTER_WEB_TELEMETRY_PATH", "/metrics"), "Path under which to expose metrics.")
 		configCommand                  = flag.String("config-command", getEnv("REDIS_EXPORTER_CONFIG_COMMAND", "CONFIG"), "What to use for the CONFIG command, set to \"-\" to skip config metrics extraction")
@@ -145,17 +143,6 @@ func main() {
 		}
 	}
 
-	var ls map[string][]byte
-	if *scriptPath != "" {
-		scripts := strings.Split(*scriptPath, ",")
-		ls = make(map[string][]byte, len(scripts))
-		for _, script := range scripts {
-			if ls[script], err = os.ReadFile(script); err != nil {
-				log.Fatalf("Error loading script file %s    err: %s", script, err)
-			}
-		}
-	}
-
 	registry := prometheus.NewRegistry()
 	if !*redisMetricsOnly {
 		registry = prometheus.DefaultRegisterer.(*prometheus.Registry)
@@ -178,7 +165,6 @@ func main() {
 			CheckSingleStreams:             *checkSingleStreams,
 			StreamsExcludeConsumerMetrics:  *streamsExcludeConsumerMetrics,
 			CountKeys:                      *countKeys,
-			LuaScript:                      ls,
 			InclSystemMetrics:              *inclSystemMetrics,
 			InclConfigMetrics:              *inclConfigMetrics,
 			DisableExportingKeyValues:      *disableExportingKeyValues,
@@ -223,8 +209,11 @@ func main() {
 	log.Infof("Providing metrics at %s%s", *listenAddress, *metricPath)
 	log.Debugf("Configured redis addr: %#v", *redisAddr)
 	server := &http.Server{
-		Addr:    *listenAddress,
-		Handler: exp,
+		Addr:         *listenAddress,
+		Handler:      exp,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 	go func() {
 		if *tlsServerCertFile != "" && *tlsServerKeyFile != "" {
