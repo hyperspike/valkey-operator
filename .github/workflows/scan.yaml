@@ -20,7 +20,13 @@ jobs:
     - uses: actions/checkout@v4
     - uses: hadolint/hadolint-action@v3.1.0
       with:
-        dockerfile: Dockerfile
+        dockerfile: Dockerfile.valkey
+    - uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile.controller
+    - uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile.sidecar
   gosec:
     runs-on: ubuntu-latest
     steps:

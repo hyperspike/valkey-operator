@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -71,8 +72,11 @@ func getEnvInt64(key string, defaultVal int64) int64 {
 
 func main() {
 	log := zap.NewExample().Sugar()
-	defer log.Sync()
-
+	defer func() {
+		if err := log.Sync(); err != nil {
+			fmt.Println("Error syncing log", err)
+		}
+	}()
 	var (
 		redisAddr                      = flag.String("redis.addr", getEnv("REDIS_ADDR", "redis://localhost:6379"), "Address of the Redis instance to scrape")
 		redisUser                      = flag.String("redis.user", getEnv("REDIS_USER", ""), "User name to use for authentication (Redis ACL for Redis 6.0 and newer)")
