@@ -3,14 +3,14 @@ FROM alpine:3.20.3 AS builder
 ARG VALKEY_VERSION=8.0.1
 
 RUN apk add --no-cache --virtual .build-deps \
-	git \
-	coreutils \
-	linux-headers \
-	musl-dev \
-	openssl-dev \
-	gcc \
-	curl \
-	make \
+	git=2.45.2-r0 \
+	coreutils=9.5-r1 \
+	linux-headers=6.6-r0 \
+	musl-dev=1.2.5-r0 \
+	openssl-dev=3.3.2-r1 \
+	gcc=13.2.1_git20240309-r0 \
+	curl=8.11.0-r2 \
+	make=4.4.1-r2 \
 	&& mkdir /home/valkey \
 	&& cd /home/valkey \
 	&& curl -L https://github.com/valkey-io/valkey/archive/refs/tags/${VALKEY_VERSION}.tar.gz -o valkey.tar.gz \
@@ -21,8 +21,8 @@ RUN apk add --no-cache --virtual .build-deps \
 FROM alpine:3.20.3 AS valkey
 
 RUN apk add --no-cache \
-	openssl \
-	ca-certificates \
+	openssl=3.3.2-r1 \
+	ca-certificates=20240705-r0 \
 	&& addgroup -S valkey -g 1009 \
 	&& adduser -S -G valkey valkey -u 1009 \
 	&& mkdir /etc/valkey \
