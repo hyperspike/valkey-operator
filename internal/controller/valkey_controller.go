@@ -159,6 +159,11 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 	if externalAccess && externalType == "Proxy" {
+		if valkey.Spec.TLS {
+			if err := r.upsertProxyCertificate(ctx, valkey); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 		if err := r.upsertExternalAccessProxySecret(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -436,7 +441,7 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 		opt := valkeyClient.ClientOption{
 			InitAddress:       []string{address},
 			Password:          password,
-			ForceSingleClient: true,
+			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
 		}
 		if valkey.Spec.TLS {
 			ca, err := r.getCACertificate(ctx, valkey)
@@ -485,21 +490,21 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 		}
 		time.Sleep(time.Second * 1)
 	}
-	/*
-		for podName, _ := range ips {
-			for shard, shardIp := range ips {
-				if shard == podName {
-					continue
-				}
-				time.Sleep(time.Second * 1)
-				logger.Info("node meeting peer", "valkey", valkey.Name, "namespace", valkey.Namespace, "peer", shardIp, "pod", podName)
-				r.Recorder.Event(valkey, "Normal", "Setting",
-					fmt.Sprintf("Node meeting peer %s on pod %s for %s/%s", shardIp, podName, valkey.Namespace, valkey.Name))
-				if err := clients[podName].Do(ctx, clients[podName].B().ClusterMeet().Ip(shardIp).Port(6379).Build()).Error(); err != nil {
-					logger.Error(err, "failed to cluster meet", "valkey", valkey.Name, "namespace", valkey.Namespace, "shard", shard, "ip", shardIp, "pod", podName)
-				}
+	/* this might be useful in the future
+	for podName, _ := range ips {
+		for shard, shardIp := range ips {
+			if shard == podName {
+				continue
+			}
+			time.Sleep(time.Second * 1)
+			logger.Info("node meeting peer", "valkey", valkey.Name, "namespace", valkey.Namespace, "peer", shardIp, "pod", podName)
+			r.Recorder.Event(valkey, "Normal", "Setting",
+				fmt.Sprintf("Node meeting peer %s on pod %s for %s/%s", shardIp, podName, valkey.Namespace, valkey.Name))
+			if err := clients[podName].Do(ctx, clients[podName].B().ClusterMeet().Ip(shardIp).Port(6379).Build()).Error(); err != nil {
+				logger.Error(err, "failed to cluster meet", "valkey", valkey.Name, "namespace", valkey.Namespace, "shard", shard, "ip", shardIp, "pod", podName)
 			}
 		}
+	}
 	*/
 	return nil
 }
@@ -641,6 +646,68 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySvc(ctx context.Context, val
 	return nil
 }
 
+func (r *ValkeyReconciler) upsertProxyCertificate(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting proxy certificate")
+
+	issuerName := ""
+	issuerKind := ""
+	if valkey.Spec.ExternalAccess != nil {
+		issuerName = valkey.Spec.ExternalAccess.CertIssuer
+		issuerKind = valkey.Spec.ExternalAccess.CertIssuerType
+	}
+	if issuerKind == "" {
+		issuerKind = valkey.Spec.CertIssuerType
+	}
+	if issuerName == "" {
+		issuerName = valkey.Spec.CertIssuer
+	}
+	cert := &certv1.Certificate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name + "-proxy",
+			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
+		},
+		Spec: certv1.CertificateSpec{
+			SecretName: valkey.Name + "-proxy-tls",
+			IssuerRef: cmetav1.ObjectReference{
+				Name: issuerName,
+				Kind: issuerKind,
+			},
+			CommonName: valkey.Name + "-proxy",
+			DNSNames: []string{
+				valkey.Name + "-proxy",
+				valkey.Name + "-proxy." + valkey.Namespace,
+				valkey.Name + "-proxy." + valkey.Namespace + ".svc",
+				valkey.Name + "-proxy." + valkey.Namespace + ".svc." + valkey.Spec.ClusterDomain,
+			},
+		},
+	}
+	hostname := valkey.Spec.ExternalAccess.Proxy.Hostname
+	if hostname != "" {
+		cert.Spec.DNSNames = append(cert.Spec.DNSNames, hostname)
+	}
+	if err := controllerutil.SetControllerReference(valkey, cert, r.Scheme); err != nil {
+		return err
+	}
+	if err := r.Create(ctx, cert); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, cert); err != nil {
+				logger.Error(err, "failed to update proxy certificate")
+				return err
+			}
+		} else {
+			logger.Error(err, "failed to create proxy certificate")
+			return err
+		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Certificate %s/%s is created", valkey.Namespace, valkey.Name+"-proxy-cert"))
+	}
+	return nil
+}
+
 func (r *ValkeyReconciler) upsertExternalAccessProxySecret(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -648,14 +715,44 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySecret(ctx context.Context, 
 
 	endpoints := []string{}
 	for i := 0; i < int(valkey.Spec.Shards); i++ {
-		host := fmt.Sprintf("%s-%d.%s-headless.%s", valkey.Name, i, valkey.Name, valkey.Namespace)
+		host := fmt.Sprintf("%s-%d.%s-headless.%s.svc", valkey.Name, i, valkey.Name, valkey.Namespace)
 		endpoints = append(endpoints, `        - endpoint:
             address:
               socket_address:
                 address: `+host+`
                 port_value: 6379`)
 	}
-
+	tlsServer := ""
+	tlsClient := ""
+	if valkey.Spec.TLS {
+		tlsServer = `      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          #require_client_certificate: true # @TODO mtls auth
+          common_tls_context:
+            tls_certificates:
+            - certificate_chain:
+                filename: /etc/envoy/certs/tls.crt
+              private_key:
+                filename: /etc/envoy/certs/tls.key
+            validation_context:
+              trusted_ca:
+                filename: /etc/envoy/certs/ca.crt`
+		tlsClient = `    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        common_tls_context:
+          #tls_certificates:
+          #  certificate_chain:
+          #    filename: "certs/client.crt"
+          #  private_key:
+          #    filename: "/etc/valkey/certs/client.key"
+          validation_context:
+            trusted_ca:
+              filename: "/etc/valkey/certs/ca.crt"`
+	}
 	password, err := r.GetPassword(ctx, valkey)
 	if err != nil {
 		logger.Error(err, "failed to get password")
@@ -686,11 +783,13 @@ static_resources:
           stat_prefix: egress_redis
           settings:
             op_timeout: 5s
+            enable_redirection: false
           prefix_routes:
             catch_all_route:
               cluster: redis_cluster
           downstream_auth_password:
             inline_string: "` + password + `"
+` + tlsServer + `
   clusters:
   - name: redis_cluster
     # type: STRICT_DNS  # static
@@ -713,6 +812,7 @@ static_resources:
         value:
           auth_password:
             inline_string: "` + password + `"
+` + tlsClient + `
 admin:
   address:
     socket_address:
@@ -816,6 +916,32 @@ func (r *ValkeyReconciler) upsertExternalAccessProxyDeployment(ctx context.Conte
 				},
 			},
 		},
+	}
+	if valkey.Spec.TLS {
+		proxyDeployment.Spec.Template.Spec.Containers[0].VolumeMounts = append(proxyDeployment.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "envoy-certs",
+			MountPath: "/etc/envoy/certs",
+		})
+		proxyDeployment.Spec.Template.Spec.Volumes = append(proxyDeployment.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "envoy-certs",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: valkey.Name + "-proxy-tls",
+				},
+			},
+		})
+		proxyDeployment.Spec.Template.Spec.Containers[0].VolumeMounts = append(proxyDeployment.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "valkey-certs",
+			MountPath: "/etc/valkey/certs",
+		})
+		proxyDeployment.Spec.Template.Spec.Volumes = append(proxyDeployment.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "valkey-certs",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: valkey.Name + "-tls",
+				},
+			},
+		})
 	}
 
 	if err := controllerutil.SetControllerReference(valkey, proxyDeployment, r.Scheme); err != nil {
@@ -1573,11 +1699,11 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 				{
 					Name:  "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE",
 					Value: "/etc/valkey/certs/tls.crt",
-				},
-				{
-					Name:  "REDIS_EXPORTER_TLS_CA_FILE",
-					Value: "/etc/valkey/certs/ca.crt",
-				},*/
+				}, */
+			{
+				Name:  "REDIS_EXPORTER_TLS_CA_FILE",
+				Value: "/etc/valkey/certs/ca.crt",
+			},
 		}
 		container.Env = append(container.Env, tlsExporterEnv...)
 	}
