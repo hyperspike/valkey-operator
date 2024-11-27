@@ -70,7 +70,7 @@ jobs:
         context: .
         push: true
         visibility: public
-        tags: ${{ steps.meta_manager.outputs.tags }}
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ env.RELEASE_VERSION }}
         labels: ${{ steps.meta_manager.outputs.labels }}
     - name: Build and push Sidecar image
       uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75
@@ -80,7 +80,7 @@ jobs:
         context: .
         push: true
         visibility: public
-        tags: ${{ steps.meta_sidecar.outputs.tags }}
+        tags: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}
         labels: ${{ steps.meta_sidecar.outputs.labels }}
     - name: Build and push Valkey image
       uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75
@@ -90,7 +90,7 @@ jobs:
         context: .
         push: true
         visibility: public
-        tags: ${{ steps.meta_valkey.outputs.tags }}
+        tags: ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}
         labels: ${{ steps.meta_valkey.outputs.labels }}
 
     - name: Set up Cosign
