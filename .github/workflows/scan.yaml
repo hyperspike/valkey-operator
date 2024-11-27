@@ -95,7 +95,7 @@ jobs:
         file: Dockerfile.valkey
         context: .
         push: false
-        tags: ${{ steps.meta_valkey.outputs.tags }}
+        tags:  ${{ env.REGISTRY }}/hyperspike/valkey:${{ github.SHA }}
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
