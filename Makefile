@@ -134,11 +134,17 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-.PHONY: docker-build
-docker-build: manager sidecar ## Build docker image with the manager.
+.PHONY: docker-build docker-build-manager docker-build-sidecar docker-build-valkey
+docker-build-manager: manager ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG_CONTROLLER} -f Dockerfile.controller .
+
+docker-build-sidecar: sidecar ## Build docker image with the sidecar binary.
 	$(CONTAINER_TOOL) build -t ${IMG_SIDECAR} -f Dockerfile.sidecar .
+
+docker-build-valkey: ## Build docker image with the valkey binary.
 	$(CONTAINER_TOOL) build -t ${IMG_VALKEY} --build-arg VALKEY_VERSION=$(VALKEY_VERSION) -f Dockerfile.valkey .
+
+docker-build: docker-build-manager docker-build-sidecar docker-build-valkey ## Build docker image with the manager, sidecar and valkey binaries.
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
