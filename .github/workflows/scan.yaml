@@ -94,17 +94,17 @@ jobs:
       id: meta_controller
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ github.SHA }}
     - name: Extract metadata (Sidecar tags, labels) for Docker
       id: meta_sidecar
       uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81
       with:
-        images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar
+        images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar${{ github.SHA }}
     - name: Extract metadata (Valkey tags, labels) for Docker
       id: meta_valkey
       uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81
       with:
-        images: ${{ env.REGISTRY }}/hyperspike/valkey:${{ github.SHA }}
+        images: ${{ env.REGISTRY }}/hyperspike/valkey${{ github.SHA }}
 
     - name: Build and push Controller image
       uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355
