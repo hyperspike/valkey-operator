@@ -113,7 +113,7 @@ manager: manifests generate fmt vet ## Build manager binary.
 		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA) \
 			-X $(PKG)/cfg.DefaultSidecarImage=$(IMG_SIDECAR) -X $(PKG)/cfg.DefaultValkeyImage=$(IMG_VALKEY)" \
 		-installsuffix cgo \
-		-o $@ cmd/manager/main.go
+		-o $@ ./cmd/manager/
 
 sidecar: manifests generate fmt vet ## Build sidecar binary.
 	$QCGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(VV) \
@@ -123,7 +123,7 @@ sidecar: manifests generate fmt vet ## Build sidecar binary.
 		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA) \
 			-X $(PKG)/cfg.DefaultSidecarImage=$(IMG_SIDECAR) -X $(PKG)/cfg.DefaultValkeyImage=$(IMG_VALKEY)" \
 		-installsuffix cgo \
-		-o $@ cmd/sidecar/main.go
+		-o $@ ./cmd/sidecar/
 
 build: manager sidecar ## Build manager and sidecar binaries.
 

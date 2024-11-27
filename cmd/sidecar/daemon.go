@@ -30,17 +30,22 @@ import (
 
 	"github.com/oliver006/redis_exporter/exporter"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
 
-var (
-	/*
-		BuildVersion, BuildDate, BuildCommitSha are filled in by the build script
-	*/
-	Version   = "<<< filled in by build >>>"
-	BuildDate = "<<< filled in by build >>>"
-	Commit    = "<<< filled in by build >>>"
-)
+var daemonCmd = &cobra.Command{
+	Use:   "daemon",
+	Short: "Start the Redis metrics exporter",
+	Long:  `Start the Redis metrics exporter`,
+	Run: func(cmd *cobra.Command, args []string) {
+		daemon()
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(daemonCmd)
+}
 
 func getEnv(key string, defaultVal string) string {
 	if envVal, ok := os.LookupEnv(key); ok {
@@ -69,7 +74,7 @@ func getEnvInt64(key string, defaultVal int64) int64 {
 	return defaultVal
 }
 
-func main() {
+func daemon() {
 	log := zap.NewExample().Sugar()
 	defer func() {
 		if err := log.Sync(); err != nil {
