@@ -8,6 +8,10 @@ on:
     - main
   pull_request:
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 permissions:
   contents: read
   security-events: write
@@ -101,6 +105,7 @@ jobs:
       uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81
       with:
         images: ${{ env.REGISTRY }}/hyperspike/valkey
+
     - name: Build and push Controller image
       uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355
       with:
@@ -116,7 +121,6 @@ jobs:
         context: .
         push: false
         tags: ${{ steps.meta_sidecar.outputs.tags }}
-        labels: ${{ steps.meta_sidecar.outputs.labels }}
     - name: Build and push Valkey image
       uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75
       id: docker_build_valkey
