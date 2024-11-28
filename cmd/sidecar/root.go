@@ -7,9 +7,11 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "sidecar",
 	Short: "The Valkey Sidecar",
-	Long:  "A tool to manage Valkey clusters withing Kubernetes",
+	Long:  "A tool to manage Valkey clusters within Kubernetes",
 }
 
 func main() {
-	rootCmd.Execute()
+	if err := rootCmd.Execute(); err != nil {
+		panic(err)
+	}
 }
