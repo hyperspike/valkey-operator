@@ -1730,8 +1730,12 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 	if valkey.Spec.Storage != nil {
 		pv = *valkey.Spec.Storage
 		pv.ObjectMeta.Name = "valkey-data"
-		for k, v := range labels(valkey) {
-			pv.ObjectMeta.Labels[k] = v
+		if pv.ObjectMeta.Labels == nil {
+			pv.ObjectMeta.Labels = labels(valkey)
+		} else {
+			for k, v := range labels(valkey) {
+				pv.ObjectMeta.Labels[k] = v
+			}
 		}
 	}
 	return pv
