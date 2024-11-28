@@ -1,0 +1,6 @@
+FROM gcr.io/distroless/static:nonroot
+
+COPY sidecar /sidecar
+USER 65532:65532
+
+ENTRYPOINT ["/sidecar"]
