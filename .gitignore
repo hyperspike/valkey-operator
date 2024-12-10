@@ -32,6 +32,7 @@ go.work
 .ingress.yaml
 blank.yaml
 cilium/
-manager
+/manager
+/sidecar
 valkey-operator/
 valkey-operator-*-chart.tgz
