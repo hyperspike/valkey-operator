@@ -7,7 +7,7 @@ toolchain go1.23.1
 require (
 	github.com/cert-manager/cert-manager v1.16.2
 	github.com/onsi/ginkgo/v2 v2.22.0
-	github.com/onsi/gomega v1.36.0
+	github.com/onsi/gomega v1.36.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.78.2
 	github.com/valkey-io/valkey-go v1.0.51
 	k8s.io/api v0.31.3
