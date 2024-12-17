@@ -58,6 +58,7 @@ const (
 	Metrics      = "metrics"
 	LoadBalancer = "LoadBalancer"
 	ValkeyProxy  = "valkey-proxy"
+	Valkey       = "valkey"
 )
 
 func init() {
@@ -213,9 +214,9 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 func labels(valkey *hyperv1.Valkey) map[string]string {
 	l := valkey.Labels
-	l["app.kubernetes.io/name"] = "valkey"
+	l["app.kubernetes.io/name"] = Valkey
 	l["app.kubernetes.io/instance"] = valkey.Name
-	l["app.kubernetes.io/component"] = "valkey"
+	l["app.kubernetes.io/component"] = Valkey
 	return l
 }
 
@@ -281,17 +282,17 @@ func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valke
 	}
 	vClient, err := valkeyClient.NewClient(opt)
 	if err != nil {
-		logger.Error(err, "failed to create valkey client", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to create valkey client")
 		return err
 	}
 	defer vClient.Close()
 	if err := vClient.Do(ctx, vClient.B().Ping().Build()).Error(); err != nil {
-		logger.Error(err, "failed to ping valkey", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to ping valkey")
 		return err
 	}
 	valkey.Status.Ready = true
 	if err := r.Client.Status().Update(ctx, valkey); err != nil {
-		logger.Error(err, "Valkey status update failed.", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "Valkey status update failed.")
 		return err
 	}
 	return nil
@@ -300,7 +301,7 @@ func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valke
 func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting service")
 
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -343,7 +344,7 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting configmap", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting configmap")
 
 	defaultConf, err := scripts.ReadFile("scripts/default.conf")
 	if err != nil {
@@ -392,11 +393,11 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 	if err := r.Create(ctx, cm); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, cm); err != nil {
-				logger.Error(err, "failed to update ConfigMap", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Error(err, "failed to update ConfigMap")
 				return err
 			}
 		} else {
-			logger.Error(err, "failed to create ConfigMap", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create ConfigMap")
 			return err
 		}
 	} else {
@@ -420,7 +421,7 @@ func (r *ValkeyReconciler) GetPassword(ctx context.Context, valkey *hyperv1.Valk
 func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("setting cluster announce ip", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("setting cluster announce ip")
 
 	ips, err := r.fetchExternalIPs(ctx, valkey)
 	if err != nil {
@@ -465,17 +466,17 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 		}
 		clients[podName], err = valkeyClient.NewClient(opt)
 		if err != nil {
-			logger.Error(err, "failed to create valkey client", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create valkey client")
 			return err
 		}
 		defer clients[podName].Close()
-		logger.Info("setting cluster announce ip", "valkey", valkey.Name, "namespace", valkey.Namespace, "ip", ip, "pod", podName)
+		logger.Info("setting cluster announce ip", "ip", ip, "pod", podName)
 		r.Recorder.Event(valkey, "Normal", "Setting",
 			fmt.Sprintf("Setting cluster announce ip %s on pod %s for %s/%s", ip, podName, valkey.Namespace, valkey.Name))
 
 		out, err := clients[podName].Do(ctx, clients[podName].B().ConfigSet().ParameterValue().ParameterValue("cluster-announce-ip", ip).Build()).ToString()
 		if err != nil {
-			logger.Error(err, "failed to set cluster announce ip "+out, "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to set cluster announce ip "+out)
 			return err
 		}
 		cfgs, err := clients[podName].Do(ctx, clients[podName].B().ConfigGet().Parameter("cluster-announce-ip").Build()).ToMap()
@@ -497,11 +498,11 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 				continue
 			}
 			time.Sleep(time.Second * 1)
-			logger.Info("node meeting peer", "valkey", valkey.Name, "namespace", valkey.Namespace, "peer", shardIp, "pod", podName)
+			logger.Info("node meeting peer", "peer", shardIp, "pod", podName)
 			r.Recorder.Event(valkey, "Normal", "Setting",
 				fmt.Sprintf("Node meeting peer %s on pod %s for %s/%s", shardIp, podName, valkey.Namespace, valkey.Name))
 			if err := clients[podName].Do(ctx, clients[podName].B().ClusterMeet().Ip(shardIp).Port(6379).Build()).Error(); err != nil {
-				logger.Error(err, "failed to cluster meet", "valkey", valkey.Name, "namespace", valkey.Namespace, "shard", shard, "ip", shardIp, "pod", podName)
+				logger.Error(err, "failed to cluster meet", "shard", shard, "ip", shardIp, "pod", podName)
 			}
 		}
 	}
@@ -515,19 +516,19 @@ func (r *ValkeyReconciler) fetchExternalIPs(ctx context.Context, valkey *hyperv1
 	ips := map[string]string{}
 	svcs := &corev1.ServiceList{}
 	if err := r.List(ctx, svcs, client.InNamespace(valkey.Namespace)); err != nil {
-		logger.Error(err, "failed to list services", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to list services")
 		return nil, err
 	}
 	for _, svc := range svcs.Items {
 		if svc.Labels["app.kubernetes.io/component"] == "valkey-external" && svc.Labels["app.kubernetes.io/instance"] == valkey.Name {
 			podName := strings.Replace(svc.Name, "-external", "", -1)
 			if svc.Status.LoadBalancer.Ingress == nil || len(svc.Status.LoadBalancer.Ingress) == 0 { // nolint:gosimple
-				logger.Info("external ip is empty", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Info("external ip is empty")
 				return nil, nil
 			}
 			ip := svc.Status.LoadBalancer.Ingress[0].IP
 			if ip == "" {
-				logger.Info("external ip is empty", "valkey")
+				logger.Info("external ip is empty")
 				return nil, nil
 			}
 			logger.Info("external ip", "pod", podName, "ip", ip)
@@ -540,7 +541,7 @@ func (r *ValkeyReconciler) fetchExternalIPs(ctx context.Context, valkey *hyperv1
 func (r *ValkeyReconciler) upsertExternalAccessLBSvc(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting external access (NodePort/LoadBalancer)", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting external access (NodePort/LoadBalancer)")
 
 	for i := 0; i < int(valkey.Spec.Shards); i++ {
 		selectorLabels := labels(valkey)
@@ -582,11 +583,11 @@ func (r *ValkeyReconciler) upsertExternalAccessLBSvc(ctx context.Context, valkey
 		if err := r.Create(ctx, svc); err != nil {
 			if errors.IsAlreadyExists(err) {
 				if err := r.Update(ctx, svc); err != nil {
-					logger.Error(err, "failed to update external access svc", "valkey", valkey.Name, "namespace", valkey.Namespace)
+					logger.Error(err, "failed to update external access svc")
 					return err
 				}
 			} else {
-				logger.Error(err, "failed to create external access svc", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Error(err, "failed to create external access svc")
 				return err
 			}
 		} else {
@@ -967,7 +968,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxyDeployment(ctx context.Conte
 func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting service")
 
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1000,11 +1001,11 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 	if err := r.Create(ctx, svc); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
-				logger.Error(err, "failed to update service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Error(err, "failed to update service")
 				return err
 			}
 		} else {
-			logger.Error(err, "failed to create service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create service")
 			return err
 		}
 	} else {
@@ -1017,7 +1018,7 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting metrics service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting metrics service")
 
 	l := labels(valkey)
 	l["app.kubernetes.io/component"] = Metrics
@@ -1049,11 +1050,11 @@ func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyp
 	if err := r.Create(ctx, svc); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
-				logger.Error(err, "failed to update metrics service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Error(err, "failed to update metrics service")
 				return err
 			}
 		} else {
-			logger.Error(err, "failed to create metrics service", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create metrics service")
 			return err
 		}
 	} else {
@@ -1066,7 +1067,7 @@ func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyp
 func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting prometheus service monitor")
 
 	labelSelector := labels(valkey)
 	labelSelector["app.kubernetes.io/component"] = Metrics
@@ -1099,18 +1100,18 @@ func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyp
 	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, sm)
 	if err != nil && errors.IsNotFound(err) {
 		if err := r.Create(ctx, sm); err != nil {
-			logger.Error(err, "failed to create prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create prometheus service monitor")
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Created",
 			fmt.Sprintf("ServiceMonitor %s/%s is created", valkey.Namespace, valkey.Name))
 	} else if err != nil {
-		logger.Error(err, "failed to fetch prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to fetch prometheus service monitor")
 		return err
 	} else if err == nil && false { // detect changes
 		// updates here
 		if err := r.Update(ctx, sm); err != nil {
-			logger.Error(err, "failed to update prometheus service monitor", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to update prometheus service monitor")
 			return err
 		}
 	}
@@ -1187,7 +1188,7 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey, once bool) (string, error) {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting secret")
 	rs, err := randString(16)
 	if err != nil {
 		return "", err
@@ -1209,18 +1210,18 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 	err = r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, secret)
 	if err != nil && errors.IsNotFound(err) {
 		if err := r.Create(ctx, secret); err != nil {
-			logger.Error(err, "failed to update secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to update secret")
 			return "", err
 		}
 		r.Recorder.Event(valkey, "Normal", "Created",
 			fmt.Sprintf("Secret %s/%s is created", valkey.Namespace, valkey.Name))
 	} else if err == nil && !once {
 		if err := r.Update(ctx, secret); err != nil {
-			logger.Error(err, "failed to create secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create secret")
 			return "", err
 		}
 	} else if err != nil {
-		logger.Error(err, "failed fetching secret", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed fetching secret")
 		return "", err
 	}
 	return string(secret.Data["password"]), nil
@@ -1229,7 +1230,7 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting service account")
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
@@ -1243,11 +1244,11 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 	if err := r.Create(ctx, sa); err != nil {
 		if errors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, sa); err != nil {
-				logger.Error(err, "failed to update service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Error(err, "failed to update service account")
 				return err
 			}
 		} else {
-			logger.Error(err, "failed to create service account", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create service account")
 			return err
 		}
 	} else {
@@ -1299,19 +1300,19 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	}
 	vClient, err := valkeyClient.NewClient(opt)
 	if err != nil {
-		logger.Error(err, "failed to create valkey client", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to create valkey client")
 		return err
 	}
 	defer vClient.Close()
 	if err := vClient.Do(ctx, vClient.B().Ping().Build()).Error(); err != nil {
-		logger.Error(err, "failed to ping valkey", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to ping valkey")
 		return err
 	}
 
-	logger.Info("balancing nodes", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("balancing nodes")
 	nodes, err := vClient.Do(ctx, vClient.B().ClusterNodes().Build()).ToString()
 	if err != nil {
-		logger.Error(err, "failed to get nodes", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to get nodes")
 		return err
 	}
 	ids := map[string]string{}
@@ -1339,7 +1340,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		if len(pods) != int(valkey.Spec.Shards) {
 			pods, err = r.getPodIps(ctx, valkey)
 			if err != nil {
-				logger.Error(err, "failed to get pod ips", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Error(err, "failed to get pod ips")
 				return err
 			}
 			time.Sleep(time.Second * 2)
@@ -1392,25 +1393,25 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 				network, err := net.Dial("tcp", ipPod+":6379")
 				if err != nil {
 					if err := network.Close(); err != nil {
-						logger.Error(err, "failed to close network", "valkey", valkey.Name, "namespace", valkey.Namespace)
+						logger.Error(err, "failed to close network")
 					}
 					time.Sleep(time.Second * 2)
 					dial++
 					if dial > 60 {
-						logger.Error(err, "failed to dial", "valkey", valkey.Name, "namespace", valkey.Namespace)
+						logger.Error(err, "failed to dial")
 						break
 					}
 					continue
 				}
 				if network != nil {
 					if err := network.Close(); err != nil {
-						logger.Error(err, "failed to close network", "valkey", valkey.Name, "namespace", valkey.Namespace)
+						logger.Error(err, "failed to close network")
 					}
 				} else {
 					time.Sleep(time.Second * 2)
 					dial++
 					if dial > 60 {
-						logger.Error(err, "failed to dial", "valkey", valkey.Name, "namespace", valkey.Namespace)
+						logger.Error(err, "failed to dial")
 						break
 					}
 					continue
@@ -1418,13 +1419,13 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 				break
 			}
 			if dial > 60 {
-				logger.Error(err, "failed to dial", "valkey", valkey.Name, "namespace", valkey.Namespace)
+				logger.Error(err, "failed to dial")
 				continue
 			}
 			res, err := vClient.Do(ctx, vClient.B().ClusterMeet().Ip(ipPod).Port(6379).Build()).ToString()
-			logger.Info("meeting node "+res, "valkey", valkey.Name, "namespace", valkey.Namespace, "node", pod)
+			logger.Info("meeting node "+res, "node", pod)
 			if err != nil {
-				logger.Error(err, "failed to meet node", "valkey", valkey.Name, "namespace", valkey.Namespace, "node", pod)
+				logger.Error(err, "failed to meet node", "node", pod)
 				return err
 			}
 			r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Node %s added to %s/%s", pod, valkey.Namespace, valkey.Name))
@@ -1439,7 +1440,7 @@ func (r *ValkeyReconciler) getPodIps(ctx context.Context, valkey *hyperv1.Valkey
 
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
-		logger.Error(err, "failed to list pods", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to list pods")
 		return nil, err
 	}
 	ret := map[string]string{}
@@ -1558,7 +1559,7 @@ func getNodeNames(valkey *hyperv1.Valkey) string {
 func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting pod disruption budget", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting pod disruption budget")
 	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
@@ -1578,18 +1579,18 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, pdb)
 	if err != nil && errors.IsNotFound(err) {
 		if err := r.Create(ctx, pdb); err != nil {
-			logger.Error(err, "failed to create pod disruption budget", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to create pod disruption budget")
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Created",
 			fmt.Sprintf("PodDisruptionBudget %s/%s is created", valkey.Namespace, valkey.Name))
 	} else if err != nil {
-		logger.Error(err, "failed to fetch pod disruption budget", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed to fetch pod disruption budget")
 		return err
 	} else if err == nil && pdb.Spec.MaxUnavailable.IntVal != int32(1) {
 		pdb.Spec.MaxUnavailable = func(i intstr.IntOrString) *intstr.IntOrString { return &i }(intstr.FromInt(1))
 		if err := r.Update(ctx, pdb); err != nil {
-			logger.Error(err, "failed to update pod disruption budget", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to update pod disruption budget")
 			return err
 		}
 	}
@@ -1797,7 +1798,7 @@ func createCluster(valkey *hyperv1.Valkey) string {
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+	logger.Info("upserting statefulset")
 	tls := "no"
 	endpointType := "ip"
 	if valkey.Spec.TLS {
@@ -1874,7 +1875,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 									Type: "RuntimeDefault",
 								},
 							},
-							Name:            "valkey",
+							Name:            Valkey,
 							ImagePullPolicy: "IfNotPresent",
 							Command: []string{
 								"/bin/bash",
@@ -2143,13 +2144,13 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, sts)
 	if err != nil && errors.IsNotFound(err) {
 		if err := r.Create(ctx, sts); err != nil {
-			logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to update statefulset")
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Created",
 			fmt.Sprintf("StatefulSet %s/%s is created", valkey.Namespace, valkey.Name))
 	} else if err != nil {
-		logger.Error(err, "failed fetching statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+		logger.Error(err, "failed fetching statefulset")
 		return err
 	}
 
@@ -2158,7 +2159,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 		sts.Spec.Replicas = &replicas
 		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getNodeNames(valkey)
 		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to update statefulset")
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (replicas)", valkey.Namespace, valkey.Name))
@@ -2166,7 +2167,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 	if valkey.Spec.Prometheus && len(sts.Spec.Template.Spec.Containers) == 1 {
 		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
 		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update statefulset", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to update statefulset")
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (exporter)", valkey.Namespace, valkey.Name))
@@ -2177,7 +2178,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 			sts.Spec.Template.Spec.InitContainers[0].Image = image
 		}
 		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update statefulset image", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to update statefulset image")
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (image)", valkey.Namespace, valkey.Name))
@@ -2189,7 +2190,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != exporterImage {
 		sts.Spec.Template.Spec.Containers[1].Image = exporterImage
 		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update statefulset exporter image", "valkey", valkey.Name, "namespace", valkey.Namespace)
+			logger.Error(err, "failed to update statefulset exporter image")
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (exporter image)", valkey.Namespace, valkey.Name))
