@@ -212,11 +212,11 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func labels(valkey *hyperv1.Valkey) map[string]string {
-	return map[string]string{
-		"app.kubernetes.io/name":      "valkey",
-		"app.kubernetes.io/instance":  valkey.Name,
-		"app.kubernetes.io/component": "valkey",
-	}
+	l := valkey.Labels
+	l["app.kubernetes.io/name"] = "valkey"
+	l["app.kubernetes.io/instance"] = valkey.Name
+	l["app.kubernetes.io/component"] = "valkey"
+	return l
 }
 
 func (r *ValkeyReconciler) getCACertificate(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
