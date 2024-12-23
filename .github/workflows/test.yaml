@@ -1,0 +1,19 @@
+name: Go Test
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23
+      # You can test your matrix by printing the current Go version
+      - name: Display Go version
+        run: go version
+      - name: Test it!
+        run: make V=1 test
