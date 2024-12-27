@@ -192,6 +192,9 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.upsertStatefulSet(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
+	if err := r.initCluster(ctx, valkey); err != nil {
+		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, err
+	}
 	if err := r.checkState(ctx, valkey, password); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
 	}
@@ -416,6 +419,117 @@ func (r *ValkeyReconciler) GetPassword(ctx context.Context, valkey *hyperv1.Valk
 		return "", err
 	}
 	return string(secret.Data["password"]), nil
+}
+
+func (r *ValkeyReconciler) getPodNames(ctx context.Context, valkey *hyperv1.Valkey) ([]string, error) {
+	logger := log.FromContext(ctx)
+
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+		logger.Error(err, "failed to list pods")
+		return nil, err
+	}
+	names := []string{}
+	for _, pod := range pods.Items {
+		names = append(names, pod.Name+"."+valkey.Name+"-headless."+valkey.Namespace+".svc")
+	}
+	return names, nil
+}
+
+func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("initializing cluster")
+
+	password, err := r.GetPassword(ctx, valkey)
+	if err != nil {
+		logger.Error(err, "failed to get password")
+		return err
+	}
+
+	podNames, err := r.getPodNames(ctx, valkey)
+	if err != nil {
+		logger.Error(err, "failed to get pod names")
+		return err
+	}
+
+	clients := map[string]valkeyClient.Client{}
+	for _, podName := range podNames {
+		address := podName + ":6379"
+		opt := valkeyClient.ClientOption{
+			InitAddress:       []string{address},
+			Password:          password,
+			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
+		}
+		if valkey.Spec.TLS {
+			ca, err := r.getCACertificate(ctx, valkey)
+			if err != nil {
+				logger.Error(err, "failed to get ca certificate")
+				return err
+			}
+			if ca == "" {
+				return fmt.Errorf("ca certificate not ready")
+			}
+			certpool, err := x509.SystemCertPool()
+			if err != nil {
+				logger.Error(err, "failed to get system cert pool")
+				return err
+			}
+			certpool.AppendCertsFromPEM([]byte(ca))
+			opt.TLSConfig = &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    certpool,
+			}
+		}
+		clients[podName], err = valkeyClient.NewClient(opt)
+		if err != nil {
+			logger.Error(err, "failed to create valkey client")
+			return err
+		}
+		defer clients[podName].Close()
+	}
+
+	counter := 0
+	for podName, client := range clients {
+		logger.Info("setting epoch", "pod", podName)
+		r.Recorder.Event(valkey, "Normal", "Setting",
+			fmt.Sprintf("Setting epoch on pod %s for %s/%s", podName, valkey.Namespace, valkey.Name))
+		if err := client.Do(ctx, client.B().ClusterSetConfigEpoch().ConfigEpoch(int64(counter+1)).Build()).Error(); err != nil {
+			logger.Error(err, "failed to set epoch")
+			return err
+		}
+		counter++
+	}
+
+	// set cluster slotrange
+	slotRange := 16384 / int(valkey.Spec.Shards)
+	for i := 0; i < int(valkey.Spec.Shards); i++ {
+		logger.Info("setting slotrange", "shard", i)
+		r.Recorder.Event(valkey, "Normal", "Setting",
+			fmt.Sprintf("Setting slotrange on shard %d for %s/%s", i, valkey.Namespace, valkey.Name))
+		if err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterAddslotsrange().StartSlotEndSlot().StartSlotEndSlot(int64(slotRange*i), int64(slotRange*(i+1)-1)).Build()).Error(); err != nil {
+			logger.Error(err, "failed to set slotrange")
+			return err
+		}
+	}
+
+	// set cluster meet
+	for _, podName := range podNames {
+		for _, shard := range podNames {
+			if shard == podName {
+				continue
+			}
+			logger.Info("node meeting peer", "peer", shard, "pod", podName)
+			r.Recorder.Event(valkey, "Normal", "Setting",
+				fmt.Sprintf("Node meeting peer %s on pod %s for %s/%s", shard, podName, valkey.Namespace, valkey.Name))
+			if err := clients[podName].Do(ctx, clients[podName].B().ClusterMeet().Ip(shard).Port(6379).Build()).Error(); err != nil {
+				logger.Error(err, "failed to cluster meet", "shard", shard, "ip", shard, "pod", podName)
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyperv1.Valkey) error {
