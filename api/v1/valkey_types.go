@@ -75,6 +75,9 @@ type ValkeySpec struct {
 
 	// External access configuration
 	ExternalAccess *ExternalAccess `json:"externalAccess,omitempty"`
+
+	// Service Password
+	ServicePassword *corev1.SecretKeySelector `json:"servicePassword,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration
