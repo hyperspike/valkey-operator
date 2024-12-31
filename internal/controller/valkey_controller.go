@@ -1299,8 +1299,30 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 	return nil
 }
 
+func (r *ValkeyReconciler) getServicePassword(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
+	logger := log.FromContext(ctx)
+
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Spec.ServicePassword.Name}, secret)
+	if err != nil {
+		logger.Error(err, "failed to fetch secret", "name", valkey.Spec.ServicePassword.Name)
+		return "", err
+	}
+	if secret.Data == nil {
+		return "", fmt.Errorf("secret %s/%s is empty", valkey.Namespace, valkey.Spec.ServicePassword.Name)
+	}
+	if secret.Data[valkey.Spec.ServicePassword.Key] == nil {
+		return "", fmt.Errorf("key %s is empty in secret %s/%s", valkey.Spec.ServicePassword.Key, valkey.Namespace, valkey.Spec.ServicePassword.Name)
+	}
+	return string(secret.Data[valkey.Spec.ServicePassword.Key]), nil
+}
+
 func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey, once bool) (string, error) {
 	logger := log.FromContext(ctx)
+
+	if valkey.Spec.ServicePassword != nil {
+		return r.getServicePassword(ctx, valkey)
+	}
 
 	logger.Info("upserting secret")
 	rs, err := randString(16)
