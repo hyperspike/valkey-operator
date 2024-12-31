@@ -22,6 +22,7 @@ jobs:
       packages: write
       id-token: write
       security-events: write
+      attestations: write
 
     steps:
     - name: Checkout repository
