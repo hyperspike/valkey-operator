@@ -38,6 +38,12 @@ jobs:
         check-latest: true
     - name: Build Installer
       run: make build-installer IMG=ghcr.io/hyperspike/valkey-operator:${{ github.ref_name }}
+    - name: Attest
+      uses: actions/attest-build-provenance@v2
+      id: attest
+      with:
+        subject-path: |
+          dist/install.yaml
     - name: Upload dist/install.yaml to release
       uses: svenstaro/upload-release-action@v2
       with:
