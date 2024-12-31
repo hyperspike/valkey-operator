@@ -1,5 +1,7 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG_CONTROLLER ?= ghcr.io/hyperspike/valkey-operator:$(VERSION)
+IMG_SIDECAR ?= ghcr.io/hyperspike/valkey-sidecar:$(VERSION)
+IMG_VALKEY ?= ghcr.io/hyperspike/valkey:$(VALKEY_VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -13,6 +15,7 @@ GO := $(shell which go)
 MINIKUBE := $(shell which minikube)
 KUBECTL := $(shell which kubectl)
 VERSION ?= $(shell  if [ ! -z $$(git tag --points-at HEAD) ] ; then git tag --points-at HEAD|cat ; else  git rev-parse --short HEAD|cat; fi )
+DATE ?= $(shell date -u  +'%Y%m%d')
 SHA ?= $(shell git rev-parse --short HEAD)
 PKG ?= hyperspike.io/valkey-operator
 
@@ -27,9 +30,10 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-K8S_VERSION ?= 1.31.3
+K8S_VERSION ?= 1.32.0
 ENVTEST_K8S_VERSION = $(K8S_VERSION)
 CILIUM_VERSION ?= 1.16.4
+VALKEY_VERSION ?= 8.0.1
 
 V ?= 0
 ifeq ($(V), 1)
@@ -106,26 +110,47 @@ manager: manifests generate fmt vet ## Build manager binary.
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
-		-ldflags "-s -w -X $(PKG)/cmd.Version=$(VERSION) -X $(PKG)/cmd.Commit=$(SHA)" \
+		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA) \
+			-X $(PKG)/cfg.DefaultSidecarImage=$(IMG_SIDECAR) -X $(PKG)/cfg.DefaultValkeyImage=$(IMG_VALKEY)" \
 		-installsuffix cgo \
-		-o $@ cmd/main.go
+		-o $@ ./cmd/manager/
 
-build: manager
+sidecar: manifests generate fmt vet ## Build sidecar binary.
+	$QCGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(VV) \
+		-trimpath \
+		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
+		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
+		-ldflags "-s -w -X main.BuildDate=$(DATE) -X main.Version=$(VERSION) -X main.Commit=$(SHA) \
+			-X $(PKG)/cfg.DefaultSidecarImage=$(IMG_SIDECAR) -X $(PKG)/cfg.DefaultValkeyImage=$(IMG_VALKEY)" \
+		-installsuffix cgo \
+		-o $@ ./cmd/sidecar/
+
+build: manager sidecar ## Build manager and sidecar binaries.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	go run ./cmd/manager/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-.PHONY: docker-build
-docker-build: manager ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+.PHONY: docker-build docker-build-manager docker-build-sidecar docker-build-valkey
+docker-build-manager: manager ## Build docker image with the manager.
+	$(CONTAINER_TOOL) build -t ${IMG_CONTROLLER} -f Dockerfile.controller .
+
+docker-build-sidecar: sidecar ## Build docker image with the sidecar binary.
+	$(CONTAINER_TOOL) build -t ${IMG_SIDECAR} -f Dockerfile.sidecar .
+
+docker-build-valkey: ## Build docker image with the valkey binary.
+	$(CONTAINER_TOOL) build -t ${IMG_VALKEY} --build-arg VALKEY_VERSION=$(VALKEY_VERSION) -f Dockerfile.valkey .
+
+docker-build: docker-build-manager docker-build-sidecar docker-build-valkey ## Build docker image with the manager, sidecar and valkey binaries.
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+	$(CONTAINER_TOOL) push ${IMG_CONTROLLER}
+	$(CONTAINER_TOOL) push ${IMG_SIDECAR}
+	$(CONTAINER_TOOL) push ${IMG_VALKEY}
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -137,17 +162,17 @@ PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile.controller > Dockerfile.controller.cross
 	- $(CONTAINER_TOOL) buildx create --name valkey-operator-builder
 	$(CONTAINER_TOOL) buildx use valkey-operator-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG_CONTROLLER} -f Dockerfile.controller.cross .
 	- $(CONTAINER_TOOL) buildx rm valkey-operator-builder
-	rm Dockerfile.cross
+	rm Dockerfile.controller.cross
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	$Qmkdir -p dist
-	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
 	$Q$(KUSTOMIZE) build config/default > dist/install.yaml
 
 ##@ Deployment
@@ -166,7 +191,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
@@ -223,7 +248,7 @@ HELM_VERSION ?= v3.15.4
 GOSEC_VERSION ?= v2.20.0
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
-	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
 	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator
 	$Qsed s@\\\(app.kubernetes.io/name\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
 	$Qsed s@\\\(app.kubernetes.io/instance\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml

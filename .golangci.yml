@@ -39,3 +39,6 @@ linters:
     - unconvert
     - unparam
     - unused
+linters-settings:
+  lll:
+    line-length: 256
