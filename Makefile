@@ -27,9 +27,9 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-K8S_VERSION ?= 1.31.3
+K8S_VERSION ?= 1.32.0
 ENVTEST_K8S_VERSION = $(K8S_VERSION)
-CILIUM_VERSION ?= 1.16.4
+CILIUM_VERSION ?= 1.16.5
 
 V ?= 0
 ifeq ($(V), 1)
