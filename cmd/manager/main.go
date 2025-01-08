@@ -53,8 +53,10 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
-var Version string
-var Commit string
+var (
+	Version string
+	Commit  string
+)
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
@@ -183,7 +185,7 @@ func main() {
 	config := cfg.Defaults()
 	for k, v := range cfgMap.Data {
 		if k == "exporterImage" && v != "" {
-			config.ExporterImage = v
+			config.SidecarImage = v
 		}
 		if k == "valkeyImage" && v != "" {
 			config.ValkeyImage = v
