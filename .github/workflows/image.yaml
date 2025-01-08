@@ -23,6 +23,7 @@ jobs:
       packages: write
       id-token: write
       security-events: write
+      attestations: write
 
     steps:
     - name: Checkout repository
@@ -105,6 +106,14 @@ jobs:
     - name: Sign Valkey image with GitHub OIDC Token
       run: |
         cosign sign --yes ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}@${{ steps.docker_build_valkey.outputs.digest }}
+
+    - name: Attest
+      uses: actions/attest-build-provenance@v2
+      id: attest
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        subject-digest: ${{ steps.docker_build.outputs.digest }}
+        push-to-registry: true
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
