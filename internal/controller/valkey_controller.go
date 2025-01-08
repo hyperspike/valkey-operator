@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -27,7 +28,9 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	valkeyClient "github.com/valkey-io/valkey-go"
@@ -349,9 +352,19 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 
 	logger.Info("upserting configmap")
 
-	defaultConf, err := scripts.ReadFile("scripts/default.conf")
+	defaultConfTmpl, err := scripts.ReadFile("scripts/valkey.conf")
 	if err != nil {
-		logger.Error(err, "failed to read default.conf")
+		logger.Error(err, "failed to read valkey.conf")
+		return err
+	}
+	confTmpl, err := template.New("valkey.conf").Parse(string(defaultConfTmpl))
+	if err != nil {
+		logger.Error(err, "failed to parse valkey.conf")
+		return err
+	}
+	conf := &bytes.Buffer{}
+	if err := confTmpl.Execute(conf, valkey); err != nil {
+		logger.Error(err, "failed to execute valkey.conf")
 		return err
 	}
 	pingReadinessLocal, err := scripts.ReadFile("scripts/ping_readiness_local.sh")
@@ -371,7 +384,7 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 			Labels:    labels(valkey),
 		},
 		Data: map[string]string{
-			"valkey-default.conf":     string(defaultConf),
+			"valkey.conf":             conf.String(),
 			"ping_readiness_local.sh": string(pingReadinessLocal),
 			"ping_liveness_local.sh":  string(pingLivenessLocal),
 		},
@@ -453,8 +466,24 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		return err
 	}
 
+	tmpips, err := r.getPodIPs(ctx, valkey)
+	if err != nil {
+		logger.Error(err, "failed to get pod ips")
+		return err
+	}
+
+	ips := map[string]string{}
+	for ip, host := range tmpips {
+		ips[host] = ip
+	}
+
 	clients := map[string]valkeyClient.Client{}
 	for _, podName := range podNames {
+		_, ok := ips[podName]
+		if !ok {
+			logger.Info("ip not found", "pod", podName)
+			return fmt.Errorf("ip not found for %s", podName)
+		}
 		address := podName + ":6379"
 		opt := valkeyClient.ClientOption{
 			InitAddress:       []string{address},
@@ -494,6 +523,26 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		logger.Info("setting epoch", "pod", podName)
 		r.Recorder.Event(valkey, "Normal", "Setting",
 			fmt.Sprintf("Setting epoch on pod %s for %s/%s", podName, valkey.Namespace, valkey.Name))
+		info, err := client.Do(ctx, client.B().ClusterInfo().Build()).ToString()
+		if err != nil {
+			logger.Error(err, "failed to get epoch")
+			return err
+		}
+		e := "0"
+		for _, line := range strings.Split(info, "\r\n") {
+			if strings.HasPrefix(line, "cluster_my_epoch") {
+				e = strings.Split(line, ":")[1]
+			}
+		}
+		epoch, err := strconv.Atoi(e)
+		if err != nil {
+			logger.Error(err, "failed to parse epoch")
+			return err
+		}
+		if epoch > 0 {
+			logger.Info("epoch already set", "epoch", epoch)
+			continue
+		}
 		if err := client.Do(ctx, client.B().ClusterSetConfigEpoch().ConfigEpoch(int64(counter+1)).Build()).Error(); err != nil {
 			logger.Error(err, "failed to set epoch")
 			return err
@@ -507,7 +556,29 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		logger.Info("setting slotrange", "shard", i)
 		r.Recorder.Event(valkey, "Normal", "Setting",
 			fmt.Sprintf("Setting slotrange on shard %d for %s/%s", i, valkey.Namespace, valkey.Name))
-		if err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterAddslotsrange().StartSlotEndSlot().StartSlotEndSlot(int64(slotRange*i), int64(slotRange*(i+1)-1)).Build()).Error(); err != nil {
+		info, err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterInfo().Build()).ToString()
+		if err != nil {
+			logger.Error(err, "failed to get cluster into")
+			return err
+		}
+		cont := false
+		for _, line := range strings.Split(info, "\r\n") {
+			if strings.HasPrefix(line, "cluster_slots_assigned") {
+				if strings.Split(line, ":")[1] != "0" {
+					logger.Info("slotrange already set")
+					cont = true
+				}
+			}
+		}
+		if cont {
+			continue
+		}
+		start := slotRange * i
+		end := slotRange*(i+1) - 1
+		if i == int(valkey.Spec.Shards)-1 {
+			end = end + 1
+		}
+		if err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterAddslotsrange().StartSlotEndSlot().StartSlotEndSlot(int64(start), int64(end)).Build()).Error(); err != nil {
 			logger.Error(err, "failed to set slotrange")
 			return err
 		}
@@ -522,7 +593,12 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 			logger.Info("node meeting peer", "peer", shard, "pod", podName)
 			r.Recorder.Event(valkey, "Normal", "Setting",
 				fmt.Sprintf("Node meeting peer %s on pod %s for %s/%s", shard, podName, valkey.Namespace, valkey.Name))
-			if err := clients[podName].Do(ctx, clients[podName].B().ClusterMeet().Ip(shard).Port(6379).Build()).Error(); err != nil {
+			ip, ok := ips[shard]
+			if !ok {
+				logger.Info("ip not found", "pod", shard)
+				return fmt.Errorf("ip not found for %s", shard)
+			}
+			if err := clients[podName].Do(ctx, clients[podName].B().ClusterMeet().Ip(ip).Port(6379).Build()).Error(); err != nil {
 				logger.Error(err, "failed to cluster meet", "shard", shard, "ip", shard, "pod", podName)
 				return err
 			}
@@ -1452,7 +1528,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	var tries int
 	for {
 		if len(pods) != int(valkey.Spec.Shards) {
-			pods, err = r.getPodIps(ctx, valkey)
+			pods, err = r.getPodIPs(ctx, valkey)
 			if err != nil {
 				logger.Error(err, "failed to get pod ips")
 				return err
@@ -1549,7 +1625,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	return nil
 }
 
-func (r *ValkeyReconciler) getPodIps(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
+func (r *ValkeyReconciler) getPodIPs(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 
 	pods := &corev1.PodList{}
@@ -1559,7 +1635,7 @@ func (r *ValkeyReconciler) getPodIps(ctx context.Context, valkey *hyperv1.Valkey
 	}
 	ret := map[string]string{}
 	for _, pod := range pods.Items {
-		ret[pod.Status.PodIP] = pod.Name
+		ret[pod.Status.PodIP] = pod.Name + "." + valkey.Name + "-headless." + valkey.Namespace + ".svc"
 	}
 	return ret, nil
 }
@@ -1992,23 +2068,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 							Name:            Valkey,
 							ImagePullPolicy: "IfNotPresent",
 							Command: []string{
-								"/bin/bash",
-								"-c",
-							},
-							Args: []string{
-								fmt.Sprintf(`# Backwards compatibility change
-if ! [[ -f /opt/bitnami/valkey/etc/valkey.conf ]]; then
-  echo COPYING FILE
-  cp  /opt/bitnami/valkey/etc/valkey-default.conf /opt/bitnami/valkey/etc/valkey.conf
-fi
-pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
-pod_index="${pod_index[-1]}"
-if [[ "$pod_index" == "0" ]]; then
-  export VALKEY_CLUSTER_CREATOR="%s"
-  export VALKEY_CLUSTER_REPLICAS="%d"
-fi
-export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
-/opt/bitnami/scripts/valkey-cluster/entrypoint.sh /opt/bitnami/scripts/valkey-cluster/run.sh`, createCluster(valkey), valkey.Spec.Replicas, valkey.Name+"-headless."+valkey.Namespace+".svc."+valkey.Spec.ClusterDomain),
+								"valkey-server",
+								"/valkey/etc/valkey.conf",
+								"--requirepass", "$(VALKEY_PASSWORD)",
 							},
 							Env: []corev1.EnvVar{
 								{
@@ -2112,26 +2174,26 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 								},
 								{
 									Name:      "valkey-data",
-									MountPath: "/bitnami/valkey/data",
-								},
-								{
-									Name:      "valkey-conf",
-									MountPath: "/opt/bitnami/valkey/etc/valkey-default.conf",
-									SubPath:   "valkey-default.conf",
+									MountPath: "/data",
 								},
 								{
 									Name:      "empty-dir",
-									MountPath: "/opt/bitnami/valkey/etc/",
+									MountPath: "/valkey/etc",
 									SubPath:   "app-conf-dir",
 								},
 								{
+									Name:      "valkey-conf",
+									MountPath: "/valkey/etc/valkey.conf",
+									SubPath:   "valkey.conf",
+								},
+								{
 									Name:      "empty-dir",
-									MountPath: "/opt/bitnami/valkey/tmp",
+									MountPath: "/valkey/tmp",
 									SubPath:   "app-tmp-dir",
 								},
 								{
 									Name:      "empty-dir",
-									MountPath: "/opt/bitnami/valkey/logs",
+									MountPath: "/var/logs/valkey",
 									SubPath:   "app-logs-dir",
 								},
 								{
@@ -2185,7 +2247,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 					"/bin/chown",
 					"-R",
 					"1001:1001",
-					"/bitnami/valkey/data",
+					"/data",
 				},
 				Resources: getInitContainerResourceRequirements(),
 				SecurityContext: &corev1.SecurityContext{
@@ -2194,7 +2256,7 @@ export VALKEY_CLUSTER_ANNOUNCE_HOSTNAME="${POD_NAME}.%s"
 				VolumeMounts: []corev1.VolumeMount{
 					{
 						Name:      "valkey-data",
-						MountPath: "/bitnami/valkey/data",
+						MountPath: "/data",
 					},
 					{
 						Name:      "empty-dir",

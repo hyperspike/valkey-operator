@@ -1,7 +1,8 @@
 # Image URL to use all building/pushing image targets
-IMG_CONTROLLER ?= ghcr.io/hyperspike/valkey-operator:$(VERSION)
-IMG_SIDECAR ?= ghcr.io/hyperspike/valkey-sidecar:$(VERSION)
-IMG_VALKEY ?= ghcr.io/hyperspike/valkey:$(VALKEY_VERSION)
+REGISTRY ?= ghcr.io/hyperspike
+IMG_CONTROLLER ?= $(REGISTRY)/valkey-operator:$(VERSION)
+IMG_SIDECAR ?= $(REGISTRY)/valkey-sidecar:$(VERSION)
+IMG_VALKEY ?= $(REGISTRY)/valkey:$(VALKEY_VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -33,7 +34,7 @@ SHELL = /usr/bin/env bash -o pipefail
 K8S_VERSION ?= 1.32.0
 ENVTEST_K8S_VERSION = $(K8S_VERSION)
 CILIUM_VERSION ?= 1.16.4
-VALKEY_VERSION ?= 8.0.1
+VALKEY_VERSION ?= 8.0.2
 
 V ?= 0
 ifeq ($(V), 1)
