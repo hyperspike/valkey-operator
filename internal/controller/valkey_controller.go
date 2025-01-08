@@ -449,7 +449,7 @@ func (r *ValkeyReconciler) getPodNames(ctx context.Context, valkey *hyperv1.Valk
 	return names, nil
 }
 
-func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valkey) error {
+func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
 	logger := log.FromContext(ctx)
 
 	logger.Info("initializing cluster")
@@ -2000,13 +2000,7 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 		},
 	}
 }
-func createCluster(valkey *hyperv1.Valkey) string {
-	create := "no"
-	if valkey.Spec.Shards > 1 {
-		create = "yes"
-	}
-	return create
-}
+
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
