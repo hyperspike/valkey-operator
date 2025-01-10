@@ -108,12 +108,26 @@ jobs:
       run: |
         cosign sign --yes ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}@${{ steps.docker_build_valkey.outputs.digest }}
 
-    - name: Attest
+    - name: Attest the Controller image
       uses: actions/attest-build-provenance@v2
       id: attest
       with:
         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        subject-digest: ${{ steps.docker_build.outputs.digest }}
+        subject-digest: ${{ steps.docker_build_controller.outputs.digest }}
+        push-to-registry: true
+    - name: Attest the Sidecar image
+      uses: actions/attest-build-provenance@v2
+      id: attest
+      with:
+        subject-name: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar
+        subject-digest: ${{ steps.docker_build_sidecar.outputs.digest }}
+        push-to-registry: true
+    - name: Attest the Valkey image
+      uses: actions/attest-build-provenance@v2
+      id: attest
+      with:
+        subject-name: ${{ env.REGISTRY }}/hyperspike/valkey
+        subject-digest: ${{ steps.docker_build_valkey.outputs.digest }}
         push-to-registry: true
 
     - name: Run Trivy vulnerability scanner
