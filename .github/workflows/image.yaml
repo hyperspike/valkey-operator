@@ -13,7 +13,8 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  VALKEY_VERSION: 8.0.1
+  VALKEY_VERSION: 8.0.2
+  RELEASE_VERSION: ${{ github.ref_name }}
 
 jobs:
   build-and-push-image:
@@ -40,7 +41,7 @@ jobs:
       id: meta_controller
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ env.RELEASE_VERSION }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
     - name: Extract metadata (Sidecar tags, labels) for Docker
       id: meta_sidecar
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
@@ -71,7 +72,7 @@ jobs:
         context: .
         push: true
         visibility: public
-        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ env.RELEASE_VERSION }}
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
         labels: ${{ steps.meta_manager.outputs.labels }}
     - name: Build and push Sidecar image
       uses: docker/build-push-action@b32b51a8eda65d6793cd0494a773d4f6bcef32dc
