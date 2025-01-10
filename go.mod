@@ -6,14 +6,14 @@ toolchain go1.23.4
 
 require (
 	github.com/cert-manager/cert-manager v1.16.2
-	github.com/oliver006/redis_exporter v1.66.0
+	github.com/oliver006/redis_exporter v1.67.0
+	github.com/onsi/ginkgo/v2 v2.22.2
+	github.com/onsi/gomega v1.36.2
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.79.2
 	github.com/prometheus/client_golang v1.20.5
 	github.com/spf13/cobra v1.8.1
-	go.uber.org/zap v1.27.0
-	github.com/onsi/ginkgo/v2 v2.22.2
-	github.com/onsi/gomega v1.36.2
 	github.com/valkey-io/valkey-go v1.0.52
+	go.uber.org/zap v1.27.0
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
 	k8s.io/client-go v0.32.0
