@@ -100,7 +100,7 @@ jobs:
 
     - name: Sign Controller image with GitHub OIDC Token
       run: |
-        cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ env.RELEASE_VERSION }}@${{ steps.docker_build_controller.outputs.digest }}
+        cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}@${{ steps.docker_build_controller.outputs.digest }}
     - name: Sign Sidecar image with GitHub OIDC Token
       run: |
         cosign sign --yes ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}@${{ steps.docker_build_sidecar.outputs.digest }}
@@ -133,7 +133,7 @@ jobs:
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ env.RELEASE_VERSION }}'
+        image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}'
         format: 'sarif'
         output: 'trivy-results.sarif'
 
