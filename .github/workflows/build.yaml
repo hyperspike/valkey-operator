@@ -1,7 +1,10 @@
-name: Go Build
+name: Build
 
 on:
   pull_request:
+
+env:
+  REGISTRY: ghcr.io
 
 jobs:
   build:
@@ -17,23 +20,35 @@ jobs:
       run: go version
     - name: Build it
       run: make V=1
+  build-operator-container:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - name: Extract metadata (Operator tags, labels) for Docker
+      id: meta_operator
+      uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
+      with:
+        images: ${{ env.REGISTRY }}/hyperspike/valkey-operator:${{ github.sha }}
+    - name: Build Operator image
+      uses: docker/build-push-action@b32b51a8eda65d6793cd0494a773d4f6bcef32dc
+      id: docker_build_operator
+      with:
+        file: Dockerfile.controller
+        context: .
+        push: false
+        visibility: public
+        tags: ${{ steps.meta_operator.outputs.images }}
+        labels: ${{ steps.meta_operator.outputs.labels }}
   build-sidecar-container:
     runs-on: ubuntu-latest
+    needs: build
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup Go ${{ matrix.go-version }}
-      uses: actions/setup-go@v5
-      with:
-        go-version: 1.23
-    - name: Build Binaries
-      id: go_build
-      run: make V=1
     - name: Extract metadata (Sidecar tags, labels) for Docker
       id: meta_sidecar
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
-        images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar${{ github.sha }}
-    - name: Build and push Sidecar image
+        images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ github.sha }}
+    - name: Build Sidecar image
       uses: docker/build-push-action@b32b51a8eda65d6793cd0494a773d4f6bcef32dc
       id: docker_build_sidecar
       with:
@@ -41,5 +56,5 @@ jobs:
         context: .
         push: false
         visibility: public
-        tags: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar${{ github.sha }}
+        tags: ${{ steps.meta_sidecar.outputs.images }}
         labels: ${{ steps.meta_sidecar.outputs.labels }}
