@@ -552,6 +552,7 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 
 	// set cluster slotrange
 	slotRange := 16384 / int(valkey.Spec.Shards)
+	prevEnd := 0
 	for i := 0; i < int(valkey.Spec.Shards); i++ {
 		logger.Info("setting slotrange", "shard", i)
 		r.Recorder.Event(valkey, "Normal", "Setting",
@@ -573,15 +574,19 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		if cont {
 			continue
 		}
-		start := slotRange * i
-		end := slotRange*(i+1) - 1
+		start := prevEnd + 1
+		if i == 0 {
+			start = 0
+		}
+		end := start + slotRange
 		if i == int(valkey.Spec.Shards)-1 {
-			end = end + 1
+			end = 16383
 		}
 		if err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterAddslotsrange().StartSlotEndSlot().StartSlotEndSlot(int64(start), int64(end)).Build()).Error(); err != nil {
 			logger.Error(err, "failed to set slotrange")
 			return err
 		}
+		prevEnd = end
 	}
 
 	// set cluster meet
