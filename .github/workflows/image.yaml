@@ -110,21 +110,21 @@ jobs:
 
     - name: Attest the Controller image
       uses: actions/attest-build-provenance@v2
-      id: attest
+      id: attest_controller
       with:
         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         subject-digest: ${{ steps.docker_build_controller.outputs.digest }}
         push-to-registry: true
     - name: Attest the Sidecar image
       uses: actions/attest-build-provenance@v2
-      id: attest
+      id: attest_sidecar
       with:
         subject-name: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar
         subject-digest: ${{ steps.docker_build_sidecar.outputs.digest }}
         push-to-registry: true
     - name: Attest the Valkey image
       uses: actions/attest-build-provenance@v2
-      id: attest
+      id: attest_valkey
       with:
         subject-name: ${{ env.REGISTRY }}/hyperspike/valkey
         subject-digest: ${{ steps.docker_build_valkey.outputs.digest }}
