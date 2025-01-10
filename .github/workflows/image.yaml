@@ -43,12 +43,12 @@ jobs:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ env.RELEASE_VERSION }}
     - name: Extract metadata (Sidecar tags, labels) for Docker
       id: meta_sidecar
-      uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81
+      uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
         images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}
     - name: Extract metadata (Valkey tags, labels) for Docker
       id: meta_valkey
-      uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81
+      uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
         images: ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}
 
@@ -74,7 +74,7 @@ jobs:
         tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ env.RELEASE_VERSION }}
         labels: ${{ steps.meta_manager.outputs.labels }}
     - name: Build and push Sidecar image
-      uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75
+      uses: docker/build-push-action@b32b51a8eda65d6793cd0494a773d4f6bcef32dc
       id: docker_build_sidecar
       with:
         file: Dockerfile.sidecar
@@ -84,7 +84,7 @@ jobs:
         tags: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}
         labels: ${{ steps.meta_sidecar.outputs.labels }}
     - name: Build and push Valkey image
-      uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75
+      uses: docker/build-push-action@b32b51a8eda65d6793cd0494a773d4f6bcef32dc
       id: docker_build_valkey
       with:
         file: Dockerfile.valkey
