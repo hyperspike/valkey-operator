@@ -45,7 +45,7 @@ jobs:
       id: meta_sidecar
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
-        images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}
+        images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar${{ env.RELEASE_VERSION }}
     - name: Extract metadata (Valkey tags, labels) for Docker
       id: meta_valkey
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
