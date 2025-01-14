@@ -12,7 +12,7 @@ require (
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.79.2
 	github.com/prometheus/client_golang v1.20.5
 	github.com/spf13/cobra v1.8.1
-	github.com/valkey-io/valkey-go v1.0.52
+	github.com/valkey-io/valkey-go v1.0.53
 	go.uber.org/zap v1.27.0
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
