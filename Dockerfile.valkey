@@ -5,7 +5,7 @@ ARG VALKEY_VERSION=8.0.1
 WORKDIR /home/valkey
 
 RUN apk add --no-cache --virtual .build-deps \
-	git=2.47.1-r0 \
+	git=2.47.2-r0 \
 	coreutils=9.5-r2 \
 	linux-headers=6.6-r1 \
 	musl-dev=1.2.5-r8 \
