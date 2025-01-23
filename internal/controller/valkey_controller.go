@@ -2006,7 +2006,20 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 	}
 }
 
-func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
+/*
+ * Create a new StatefulSet for each Valkey Shard (Node)
+ */
+func (r *ValkeyReconciler) upsertStatefulSets(ctx context.Context, valkey *hyperv1.Valkey) error { // {{{
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting statefulsets")
+
+	return nil
+}
+
+// }}}
+
+func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error { // {{{
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting statefulset")
@@ -2395,6 +2408,8 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 
 	return nil
 }
+
+// }}}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ValkeyReconciler) SetupWithManager(mgr ctrl.Manager) error {

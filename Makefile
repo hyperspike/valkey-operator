@@ -33,7 +33,7 @@ SHELL = /usr/bin/env bash -o pipefail
 
 K8S_VERSION ?= 1.32.1
 ENVTEST_K8S_VERSION = $(K8S_VERSION)
-CILIUM_VERSION ?= 1.16.5
+CILIUM_VERSION ?= 1.16.6
 VALKEY_VERSION ?= 8.0.2
 
 V ?= 0
@@ -241,12 +241,12 @@ GOSEC ?= $(LOCALBIN)/gosec-$(GOSEC_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
-CONTROLLER_TOOLS_VERSION ?= v0.16.5
+CONTROLLER_TOOLS_VERSION ?= v0.17.1
 ENVTEST_VERSION ?= release-0.18
-GOLANGCI_LINT_VERSION ?= v1.61.0
-HELMIFY_VERSION ?= v0.4.14
-HELM_VERSION ?= v3.15.4
-GOSEC_VERSION ?= v2.20.0
+GOLANGCI_LINT_VERSION ?= v1.63.4
+HELMIFY_VERSION ?= v0.4.17
+HELM_VERSION ?= v3.16.2
+GOSEC_VERSION ?= v2.22.0
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
 	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
