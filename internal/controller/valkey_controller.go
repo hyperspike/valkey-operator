@@ -1871,9 +1871,8 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			},
 		},
 		Command: []string{
-			"/bin/bash",
-			"-c",
-			"redis_exporter", // this seems liable to change
+			"/sidecar",
+			"daemon",
 		},
 		Resources: getExporterResourceRequirements(),
 		SecurityContext: &corev1.SecurityContext{
