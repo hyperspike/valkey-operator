@@ -1955,7 +1955,7 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 				pv.ObjectMeta.Labels[k] = v
 			}
 		}
-		if pv.Spec.AccessModes == nil || len(pv.Spec.AccessModes) == 0 {
+		if len(pv.Spec.AccessModes) == 0 {
 			pv.Spec.AccessModes = []corev1.PersistentVolumeAccessMode{
 				"ReadWriteOnce",
 			}
