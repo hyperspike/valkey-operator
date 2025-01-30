@@ -9,7 +9,7 @@ var (
 
 type Config struct {
 	// The default clusterwide prometheus exporter image to use
-	SidecarImage string `json:"exporterImage"`
+	SidecarImage string `json:"sidecarImage"`
 	// The default clusterwide valkey image to use
 	ValkeyImage string `json:"valkeyImage"`
 	// The default number of nodes to use

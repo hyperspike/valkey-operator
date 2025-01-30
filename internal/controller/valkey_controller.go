@@ -347,6 +347,53 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 	return nil
 }
 
+func (r *ValkeyReconciler) upsertServiceShard(ctx context.Context, valkey *hyperv1.Valkey, shardId int) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting service shard")
+
+	l := labels(valkey)
+	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-%d", valkey.Name, shardId),
+			Namespace: valkey.Namespace,
+			Labels:    l,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:                     corev1.ServiceTypeClusterIP,
+			PublishNotReadyAddresses: true,
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "tcp-valkey",
+					Port:       6379,
+					TargetPort: intstr.FromString("tcp-valkey"),
+					Protocol:   corev1.ProtocolTCP,
+					NodePort:   0,
+				},
+			},
+			Selector: l,
+		},
+	}
+	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
+		return err
+	}
+	if err := r.Create(ctx, svc); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, svc); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Service %s/%s/%d is created", valkey.Namespace, valkey.Name, shardId))
+	}
+	return nil
+}
+
 func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -1816,8 +1863,8 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 
 func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 	image := r.GlobalConfig.SidecarImage
-	if valkey.Spec.ExporterImage != "" {
-		image = valkey.Spec.ExporterImage
+	if valkey.Spec.SidecarImage != "" {
+		image = valkey.Spec.SidecarImage
 	}
 
 	container := corev1.Container{
@@ -2017,20 +2064,22 @@ func (r *ValkeyReconciler) upsertDeployment(ctx context.Context, valkey *hyperv1
 	if valkey.Spec.Image != "" {
 		image = valkey.Spec.Image
 	}
+	l := labels(valkey)
+	l["hyperspike.io/valkey-shard"] = fmt.Sprintf("%d", shardId)
 	sts := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
-			Labels:    labels(valkey),
+			Labels:    l,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: func(i int32) *int32 { return &i }(int32(1)),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: labels(valkey),
+				MatchLabels: l,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels(valkey),
+					Labels: l,
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: valkey.Name,
@@ -2315,16 +2364,6 @@ func (r *ValkeyReconciler) upsertDeployment(ctx context.Context, valkey *hyperv1
 		return err
 	}
 
-	if *sts.Spec.Replicas != valkey.Spec.Shards {
-		replicas := valkey.Spec.Shards * (valkey.Spec.Replicas + 1)
-		sts.Spec.Replicas = &replicas
-		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getNodeNames(valkey)
-		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update deployment")
-			return err
-		}
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (replicas)", valkey.Namespace, valkey.Name))
-	}
 	if valkey.Spec.Prometheus && len(sts.Spec.Template.Spec.Containers) == 1 {
 		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
 		if err := r.Update(ctx, sts); err != nil {
@@ -2333,23 +2372,12 @@ func (r *ValkeyReconciler) upsertDeployment(ctx context.Context, valkey *hyperv1
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (exporter)", valkey.Namespace, valkey.Name))
 	}
-	if sts.Spec.Template.Spec.Containers[0].Image != image {
-		sts.Spec.Template.Spec.Containers[0].Image = image
-		if valkey.Spec.VolumePermissions {
-			sts.Spec.Template.Spec.InitContainers[0].Image = image
-		}
-		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update deployment image")
-			return err
-		}
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (image)", valkey.Namespace, valkey.Name))
+	sidecarImage := r.GlobalConfig.SidecarImage
+	if valkey.Spec.SidecarImage != "" {
+		sidecarImage = valkey.Spec.SidecarImage
 	}
-	exporterImage := r.GlobalConfig.SidecarImage
-	if valkey.Spec.ExporterImage != "" {
-		exporterImage = valkey.Spec.ExporterImage
-	}
-	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != exporterImage {
-		sts.Spec.Template.Spec.Containers[1].Image = exporterImage
+	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != sidecarImage {
+		sts.Spec.Template.Spec.Containers[1].Image = sidecarImage
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update deployment exporter image")
 			return err
@@ -2736,12 +2764,12 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (image)", valkey.Namespace, valkey.Name))
 	}
-	exporterImage := r.GlobalConfig.SidecarImage
-	if valkey.Spec.ExporterImage != "" {
-		exporterImage = valkey.Spec.ExporterImage
+	sidecarImage := r.GlobalConfig.SidecarImage
+	if valkey.Spec.SidecarImage != "" {
+		sidecarImage = valkey.Spec.SidecarImage
 	}
-	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != exporterImage {
-		sts.Spec.Template.Spec.Containers[1].Image = exporterImage
+	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != sidecarImage {
+		sts.Spec.Template.Spec.Containers[1].Image = sidecarImage
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset exporter image")
 			return err
