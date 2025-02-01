@@ -58,10 +58,11 @@ import (
 )
 
 const (
-	Metrics      = "metrics"
-	LoadBalancer = "LoadBalancer"
-	ValkeyProxy  = "valkey-proxy"
-	Valkey       = "valkey"
+	DefaultVolumeSize = "8Gi"
+	Metrics           = "metrics"
+	LoadBalancer      = "LoadBalancer"
+	ValkeyProxy       = "valkey-proxy"
+	Valkey            = "valkey"
 )
 
 func init() {
@@ -1986,7 +1987,7 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 			},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					"storage": func(s string) resource.Quantity { return resource.MustParse(s) }("8Gi"),
+					"storage": func(s string) resource.Quantity { return resource.MustParse(s) }(DefaultVolumeSize),
 				},
 			},
 		},
@@ -2000,6 +2001,15 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 			for k, v := range labels(valkey) {
 				pv.ObjectMeta.Labels[k] = v
 			}
+		}
+		if len(pv.Spec.AccessModes) == 0 {
+			pv.Spec.AccessModes = []corev1.PersistentVolumeAccessMode{
+				"ReadWriteOnce",
+			}
+		}
+		_, ok := pv.Spec.Resources.Requests["storage"]
+		if !ok {
+			pv.Spec.Resources.Requests["storage"] = func(s string) resource.Quantity { return resource.MustParse(s) }(DefaultVolumeSize)
 		}
 	}
 	return pv
