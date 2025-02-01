@@ -33,15 +33,23 @@ type ValkeySpec struct {
 	Image string `json:"image,omitempty"`
 
 	// Exporter Image to use
-	ExporterImage string `json:"exporterImage,omitempty"`
+	SidecarImage string `json:"sidecarImage,omitempty"`
 
-	// Number of shards
+	// Number of shards (IE master nodes)
 	// +kubebuilder:default:=3
-	Shards int32 `json:"nodes,omitempty"`
+	Shards int32 `json:"shards,omitempty"`
 
-	// Number of replicas
+	// Number of replicas per shard (IE follower nodes)
 	// +kubebuilder:default:=0
 	Replicas int32 `json:"replicas,omitempty"`
+
+	// Auto Upgrade - Automatically upgrade the Valkey version when a new version is available
+	// +kubebuilder:default:=true
+	AutoUpgrade bool `json:"autoUpgrade,omitempty"`
+
+	// Auto Scale - Automatically re-scale the number of shards and replicas.
+	// +kubebuilder:default:=true
+	AutoScaling AutoScaleSpec `json:"autoScaling,omitempty"`
 
 	// Turn on an init container to set permissions on the persistent volume
 	// +kubebuilder:default:=false
@@ -78,6 +86,45 @@ type ValkeySpec struct {
 
 	// Service Password
 	ServicePassword *corev1.SecretKeySelector `json:"servicePassword,omitempty"`
+}
+
+// AutoScaleSpec defines the autoscale configuration
+type AutoScaleSpec struct {
+	// Enable auto scaling
+	// +kubebuilder:default:=false
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Minimum number of shards
+	// +kubebuilder:default:=3
+	MinShards int32 `json:"minShards,omitempty"`
+
+	// Maximum number of shards
+	// +kubebuilder:default:=5
+	MaxShards int32 `json:"maxShards,omitempty"`
+
+	// Minimum number of replicas
+	// +kubebuilder:default:=0
+	MinReplicas int32 `json:"minReplicas,omitempty"`
+
+	// Maximum number of replicas
+	// +kubebuilder:default:=3
+	MaxReplicas int32 `json:"maxReplicas,omitempty"`
+
+	// CPU threshold for scaling
+	// +kubebuilder:default:=80
+	CPUThreshold int32 `json:"cpuThreshold,omitempty"`
+
+	// Memory threshold for scaling
+	// +kubebuilder:default:=80
+	MemoryThreshold int32 `json:"memoryThreshold,omitempty"`
+
+	// Scale up delay
+	// +kubebuilder:default:="1m"
+	ScaleUpDelay string `json:"scaleUpDelay,omitempty"`
+
+	// Scale down delay
+	// +kubebuilder:default:="45s"
+	ScaleDownDelay string `json:"scaleDownDelay,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration

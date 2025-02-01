@@ -348,6 +348,53 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 	return nil
 }
 
+func (r *ValkeyReconciler) upsertServiceShard(ctx context.Context, valkey *hyperv1.Valkey, shardId int) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting service shard")
+
+	l := labels(valkey)
+	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-%d", valkey.Name, shardId),
+			Namespace: valkey.Namespace,
+			Labels:    l,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:                     corev1.ServiceTypeClusterIP,
+			PublishNotReadyAddresses: true,
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "tcp-valkey",
+					Port:       6379,
+					TargetPort: intstr.FromString("tcp-valkey"),
+					Protocol:   corev1.ProtocolTCP,
+					NodePort:   0,
+				},
+			},
+			Selector: l,
+		},
+	}
+	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
+		return err
+	}
+	if err := r.Create(ctx, svc); err != nil {
+		if errors.IsAlreadyExists(err) {
+			if err := r.Update(ctx, svc); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Service %s/%s/%d is created", valkey.Namespace, valkey.Name, shardId))
+	}
+	return nil
+}
+
 func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -1817,8 +1864,8 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 
 func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 	image := r.GlobalConfig.SidecarImage
-	if valkey.Spec.ExporterImage != "" {
-		image = valkey.Spec.ExporterImage
+	if valkey.Spec.SidecarImage != "" {
+		image = valkey.Spec.SidecarImage
 	}
 
 	container := corev1.Container{
@@ -2015,7 +2062,345 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 	}
 }
 
-func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
+/*
+ * Create a new Deployment for a Valkey Shard (Node)
+ */
+func (r *ValkeyReconciler) upsertDeployment(ctx context.Context, valkey *hyperv1.Valkey, shardId int, replica bool) error { // {{{
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting Deployment")
+
+	image := r.GlobalConfig.ValkeyImage
+	if valkey.Spec.Image != "" {
+		image = valkey.Spec.Image
+	}
+	l := labels(valkey)
+	l["hyperspike.io/valkey-shard"] = fmt.Sprintf("%d", shardId)
+	sts := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      valkey.Name,
+			Namespace: valkey.Namespace,
+			Labels:    l,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: func(i int32) *int32 { return &i }(int32(1)),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: l,
+				},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: valkey.Name,
+					EnableServiceLinks: func(b bool) *bool { return &b }(false),
+					HostNetwork:        false,
+					SecurityContext: &corev1.PodSecurityContext{
+						FSGroup:             func(i int64) *int64 { return &i }(1001),
+						FSGroupChangePolicy: func(s corev1.PodFSGroupChangePolicy) *corev1.PodFSGroupChangePolicy { return &s }(corev1.FSGroupChangeAlways),
+						SupplementalGroups:  []int64{},
+						Sysctls:             []corev1.Sysctl{},
+					},
+					AutomountServiceAccountToken: func(b bool) *bool { return &b }(false),
+					Affinity: &corev1.Affinity{
+						PodAntiAffinity: &corev1.PodAntiAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+								{
+									Weight: 1,
+									PodAffinityTerm: corev1.PodAffinityTerm{
+										LabelSelector: &metav1.LabelSelector{
+											MatchLabels: labels(valkey),
+										},
+										TopologyKey: "kubernetes.io/hostname",
+									},
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Image: image,
+							SecurityContext: &corev1.SecurityContext{
+								AllowPrivilegeEscalation: func(b bool) *bool { return &b }(false),
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{
+										"ALL",
+									},
+								},
+								Privileged:             func(b bool) *bool { return &b }(false),
+								ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
+								RunAsNonRoot:           func(b bool) *bool { return &b }(true),
+								RunAsUser:              func(i int64) *int64 { return &i }(1001),
+								RunAsGroup:             func(i int64) *int64 { return &i }(1001),
+								SELinuxOptions:         &corev1.SELinuxOptions{},
+								SeccompProfile: &corev1.SeccompProfile{
+									Type: "RuntimeDefault",
+								},
+							},
+							Name:            Valkey,
+							ImagePullPolicy: "IfNotPresent",
+							Command: []string{
+								"valkey-server",
+								"/valkey/etc/valkey.conf",
+								"--requirepass", "$(VALKEY_PASSWORD)",
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name: "REDISCLI_AUTH",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											Key: "password",
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: valkey.Name,
+											},
+										},
+									},
+								},
+								{
+									Name: "VALKEY_PASSWORD",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											Key: "password",
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: valkey.Name,
+											},
+										},
+									},
+								},
+							},
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "tcp-valkey",
+									ContainerPort: 6379,
+								},
+								{
+									Name:          "tcp-valkey-bus",
+									ContainerPort: 16379,
+								},
+							},
+							LivenessProbe: &corev1.Probe{
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
+								FailureThreshold:    5,
+								TimeoutSeconds:      6,
+								SuccessThreshold:    1,
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{
+											"sh",
+											"-c",
+											"/scripts/ping_liveness_local.sh 5",
+										},
+									},
+								},
+							},
+							ReadinessProbe: &corev1.Probe{
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
+								FailureThreshold:    5,
+								TimeoutSeconds:      2,
+								SuccessThreshold:    1,
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{
+											"sh",
+											"-c",
+											"/scripts/ping_readiness_local.sh 1",
+										},
+									},
+								},
+							},
+							Resources: getResourceRequirements(valkey),
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "scripts",
+									MountPath: "/scripts",
+								},
+								{
+									Name:      "valkey-data",
+									MountPath: "/data",
+								},
+								{
+									Name:      "empty-dir",
+									MountPath: "/valkey/etc",
+									SubPath:   "app-conf-dir",
+								},
+								{
+									Name:      "valkey-conf",
+									MountPath: "/valkey/etc/valkey.conf",
+									SubPath:   "valkey.conf",
+								},
+								{
+									Name:      "empty-dir",
+									MountPath: "/valkey/tmp",
+									SubPath:   "app-tmp-dir",
+								},
+								{
+									Name:      "empty-dir",
+									MountPath: "/var/logs/valkey",
+									SubPath:   "app-logs-dir",
+								},
+								{
+									Name:      "empty-dir",
+									MountPath: "/tmp",
+									SubPath:   "tmp-dir",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "scripts",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: valkey.Name,
+									},
+									DefaultMode: func(i int32) *int32 { return &i }(0755),
+								},
+							},
+						},
+						{
+							Name: "valkey-conf",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: valkey.Name,
+									},
+								},
+							},
+						},
+						{
+							Name: "empty-dir",
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	if valkey.Spec.VolumePermissions {
+		sts.Spec.Template.Spec.InitContainers = []corev1.Container{
+			{
+				Name:            "volume-permissions",
+				Image:           image,
+				ImagePullPolicy: "IfNotPresent",
+				Command: []string{
+					"/bin/chown",
+					"-R",
+					"1001:1001",
+					"/data",
+				},
+				Resources: getInitContainerResourceRequirements(),
+				SecurityContext: &corev1.SecurityContext{
+					RunAsUser: func(i int64) *int64 { return &i }(0),
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "valkey-data",
+						MountPath: "/data",
+					},
+					{
+						Name:      "empty-dir",
+						MountPath: "/tmp",
+						SubPath:   "tmp-dir",
+					},
+				},
+			},
+		}
+	}
+	if valkey.Spec.TLS {
+		tlsEnv := []corev1.EnvVar{
+			{
+				Name:  "VALKEY_TLS_AUTH_CLIENTS",
+				Value: "no",
+			},
+			{
+				Name:  "VALKEY_TLS_PORT_NUMBER",
+				Value: "6379",
+			},
+			{
+				Name:  "VALKEY_TLS_CERT_FILE",
+				Value: "/etc/valkey/certs/tls.crt",
+			},
+			{
+				Name:  "VALKEY_TLS_KEY_FILE",
+				Value: "/etc/valkey/certs/tls.key",
+			},
+			{
+				Name:  "VALKEY_TLS_CA_FILE",
+				Value: "/etc/valkey/certs/ca.crt",
+			},
+		}
+		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, tlsEnv...)
+		sts.Spec.Template.Spec.Containers[0].VolumeMounts = append(sts.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "valkey-tls",
+			MountPath: "/etc/valkey/certs",
+		})
+		sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "valkey-tls",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: valkey.Name + "-tls",
+				},
+			},
+		})
+	}
+	if valkey.Spec.ExternalAccess != nil && valkey.Spec.ExternalAccess.Enabled {
+		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+			Name:  "VALKEY_EXTERNAL_ACCESS",
+			Value: "yes",
+		})
+	}
+	if valkey.Spec.Prometheus {
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
+	}
+	if err := controllerutil.SetControllerReference(valkey, sts, r.Scheme); err != nil {
+		return err
+	}
+
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, sts)
+	if err != nil && errors.IsNotFound(err) {
+		if err := r.Create(ctx, sts); err != nil {
+			logger.Error(err, "failed to update deployment")
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Deployment %s/%s is created", valkey.Namespace, valkey.Name))
+	} else if err != nil {
+		logger.Error(err, "failed fetching deployment")
+		return err
+	}
+
+	if valkey.Spec.Prometheus && len(sts.Spec.Template.Spec.Containers) == 1 {
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
+		if err := r.Update(ctx, sts); err != nil {
+			logger.Error(err, "failed to update deployment")
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (exporter)", valkey.Namespace, valkey.Name))
+	}
+	sidecarImage := r.GlobalConfig.SidecarImage
+	if valkey.Spec.SidecarImage != "" {
+		sidecarImage = valkey.Spec.SidecarImage
+	}
+	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != sidecarImage {
+		sts.Spec.Template.Spec.Containers[1].Image = sidecarImage
+		if err := r.Update(ctx, sts); err != nil {
+			logger.Error(err, "failed to update deployment exporter image")
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (exporter image)", valkey.Namespace, valkey.Name))
+	}
+
+	return nil
+}
+
+// }}}
+
+func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error { // {{{
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting statefulset")
@@ -2389,12 +2774,12 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 		}
 		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (image)", valkey.Namespace, valkey.Name))
 	}
-	exporterImage := r.GlobalConfig.SidecarImage
-	if valkey.Spec.ExporterImage != "" {
-		exporterImage = valkey.Spec.ExporterImage
+	sidecarImage := r.GlobalConfig.SidecarImage
+	if valkey.Spec.SidecarImage != "" {
+		sidecarImage = valkey.Spec.SidecarImage
 	}
-	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != exporterImage {
-		sts.Spec.Template.Spec.Containers[1].Image = exporterImage
+	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != sidecarImage {
+		sts.Spec.Template.Spec.Containers[1].Image = sidecarImage
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset exporter image")
 			return err
@@ -2404,6 +2789,8 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 
 	return nil
 }
+
+// }}}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ValkeyReconciler) SetupWithManager(mgr ctrl.Manager) error {

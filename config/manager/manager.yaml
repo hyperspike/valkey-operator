@@ -19,7 +19,7 @@ metadata:
 data:
   nodes: "3"
   valkeyImage: "ghcr.io/hyperspike/valkey:8.0.2"
-  exporterImage: "ghcr.io/hyperspike/valkey-sidecar:v0.0.51"
+  sidecarImage: "ghcr.io/hyperspike/valkey-sidecar:v0.0.51"
 ---
 apiVersion: apps/v1
 kind: Deployment
