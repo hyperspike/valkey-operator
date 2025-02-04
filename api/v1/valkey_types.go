@@ -48,8 +48,7 @@ type ValkeySpec struct {
 	AutoUpgrade bool `json:"autoUpgrade,omitempty"`
 
 	// Auto Scale - Automatically re-scale the number of shards and replicas.
-	// +kubebuilder:default:=true
-	AutoScaling AutoScaleSpec `json:"autoScaling,omitempty"`
+	AutoScaling *AutoScaleSpec `json:"autoScaling,omitempty"`
 
 	// Turn on an init container to set permissions on the persistent volume
 	// +kubebuilder:default:=false
@@ -82,7 +81,7 @@ type ValkeySpec struct {
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// External access configuration
-	ExternalAccess *ExternalAccess `json:"externalAccess,omitempty"`
+	ExternalAccess *ExternalAccessSpec `json:"externalAccess,omitempty"`
 
 	// Service Password
 	ServicePassword *corev1.SecretKeySelector `json:"servicePassword,omitempty"`
@@ -128,7 +127,7 @@ type AutoScaleSpec struct {
 }
 
 // ExternalAccess defines the external access configuration
-type ExternalAccess struct {
+type ExternalAccessSpec struct {
 	// Enable external access
 	// +kubebuilder:default:=false
 	Enabled bool `json:"enabled,omitempty"`

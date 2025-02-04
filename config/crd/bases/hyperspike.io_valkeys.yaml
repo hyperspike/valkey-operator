@@ -63,7 +63,6 @@ spec:
             description: ValkeySpec defines the desired state of Valkey
             properties:
               autoScaling:
-                default: true
                 description: Auto Scale - Automatically re-scale the number of shards
                   and replicas.
                 properties:
