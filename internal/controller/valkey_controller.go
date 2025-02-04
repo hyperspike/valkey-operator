@@ -186,9 +186,13 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	password, err := r.upsertSecret(ctx, valkey, true)
-	if err != nil {
-		return ctrl.Result{}, err
+	password := ""
+	if !valkey.Spec.AnonymousAuth {
+		var err error
+		password, err = r.upsertSecret(ctx, valkey, true)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 	if err := r.upsertPodDisruptionBudget(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
@@ -264,7 +268,9 @@ func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valke
 
 	opt := valkeyClient.ClientOption{
 		InitAddress: []string{valkey.Name + "." + valkey.Namespace + ".svc:6379"},
-		Password:    password,
+	}
+	if !valkey.Spec.AnonymousAuth {
+		opt.Password = password
 	}
 	if valkey.Spec.TLS {
 		ca, err := r.getCACertificate(ctx, valkey)
@@ -455,12 +461,6 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 
 	logger.Info("initializing cluster")
 
-	password, err := r.GetPassword(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get password")
-		return err
-	}
-
 	podNames, err := r.getPodNames(ctx, valkey)
 	if err != nil {
 		logger.Error(err, "failed to get pod names")
@@ -488,9 +488,17 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		address := podName + ":6379"
 		opt := valkeyClient.ClientOption{
 			InitAddress:       []string{address},
-			Password:          password,
 			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
 		}
+		if !valkey.Spec.AnonymousAuth {
+			var err error
+			opt.Password, err = r.GetPassword(ctx, valkey)
+			if err != nil {
+				logger.Error(err, "failed to get password")
+				return err
+			}
+		}
+
 		if valkey.Spec.TLS {
 			ca, err := r.getCACertificate(ctx, valkey)
 			if err != nil {
@@ -626,10 +634,14 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 	if len(ips) == 0 {
 		return errors.NewBadRequest("external ip is empty")
 	}
-	password, err := r.GetPassword(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get password")
-		return err
+	password := ""
+	if !valkey.Spec.AnonymousAuth {
+		var err error
+		password, err = r.GetPassword(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get password")
+			return err
+		}
 	}
 	clients := map[string]valkeyClient.Client{}
 	for podName, ip := range ips {
@@ -637,8 +649,10 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 		logger.Info("working on node", "ip", ip, "pod", podName, "address", address)
 		opt := valkeyClient.ClientOption{
 			InitAddress:       []string{address},
-			Password:          password,
 			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
+		}
+		if !valkey.Spec.AnonymousAuth {
+			opt.Password = password
 		}
 		if valkey.Spec.TLS {
 			ca, err := r.getCACertificate(ctx, valkey)
@@ -950,10 +964,17 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySecret(ctx context.Context, 
             trusted_ca:
               filename: "/etc/valkey/certs/ca.crt"`
 	}
-	password, err := r.GetPassword(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get password")
-		return err
+	upstreamPassword := ""
+	downstreamPassword := ""
+	if !valkey.Spec.AnonymousAuth {
+		password, err := r.GetPassword(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get password")
+			return err
+		}
+		downstreamPassword = `          downstream_auth_password:
+            inline_string: "` + password + `"`
+		upstreamPassword = `            inline_string: "` + password + `"`
 	}
 	proxyLabels := labels(valkey)
 	proxyLabels["app.kubernetes.io/component"] = ValkeyProxy
@@ -984,8 +1005,7 @@ static_resources:
           prefix_routes:
             catch_all_route:
               cluster: redis_cluster
-          downstream_auth_password:
-            inline_string: "` + password + `"
+` + downstreamPassword + `
 ` + tlsServer + `
   clusters:
   - name: redis_cluster
@@ -1008,7 +1028,7 @@ static_resources:
         "@type": type.googleapis.com/google.protobuf.Struct
         value:
           auth_password:
-            inline_string: "` + password + `"
+` + upstreamPassword + `
 ` + tlsClient + `
 admin:
   address:
@@ -1486,15 +1506,16 @@ func removePort(addr string) string {
 func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint: gocyclo
 	logger := log.FromContext(ctx)
 
-	password, err := r.upsertSecret(ctx, valkey, true)
-	if err != nil {
-		return err
-	}
-
 	// connect to the first node!
 	opt := valkeyClient.ClientOption{
 		InitAddress: []string{valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc:6379"},
-		Password:    password,
+	}
+	if !valkey.Spec.AnonymousAuth {
+		var err error
+		opt.Password, err = r.upsertSecret(ctx, valkey, true)
+		if err != nil {
+			return err
+		}
 	}
 	if valkey.Spec.TLS {
 		ca, err := r.getCACertificate(ctx, valkey)
@@ -1837,28 +1858,6 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 				Value: "valkey://127.0.0.1:6379",
 			},
 			{
-				Name: "VALKEY_PASSWORD",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						Key: "password",
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: valkey.Name,
-						},
-					},
-				},
-			},
-			{
-				Name: "REDIS_PASSWORD",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						Key: "password",
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: valkey.Name,
-						},
-					},
-				},
-			},
-			{
 				Name:  "VALKEY_EXPORTER_WEB_LISTEN_ADDRESS",
 				Value: ":9121",
 			},
@@ -1893,6 +1892,30 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 				Type: "RuntimeDefault",
 			},
 		},
+	}
+	if !valkey.Spec.AnonymousAuth {
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name: "VALKEY_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					Key: "password",
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: valkey.Name,
+					},
+				},
+			},
+		})
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name: "REDIS_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					Key: "password",
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: valkey.Name,
+					},
+				},
+			},
+		})
 	}
 	if valkey.Spec.TLS {
 		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
@@ -2100,7 +2123,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 							Command: []string{
 								"valkey-server",
 								"/valkey/etc/valkey.conf",
-								"--requirepass", "$(VALKEY_PASSWORD)",
+								"--protected-mode", "no",
 							},
 							Env: []corev1.EnvVar{
 								{
@@ -2114,28 +2137,6 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 								{
 									Name:  "VALKEY_NODES",
 									Value: getNodeNames(valkey),
-								},
-								{
-									Name: "REDISCLI_AUTH",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											Key: "password",
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: valkey.Name,
-											},
-										},
-									},
-								},
-								{
-									Name: "VALKEY_PASSWORD",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											Key: "password",
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: valkey.Name,
-											},
-										},
-									},
 								},
 								{
 									Name:  "VALKEY_CLUSTER_PREFERRED_ENDPOINT_TYPE",
@@ -2333,6 +2334,35 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 				},
 			},
 		})
+	}
+	if !valkey.Spec.AnonymousAuth {
+		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+			Name: "REDISCLI_AUTH",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					Key: "password",
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: valkey.Name,
+					},
+				},
+			},
+		})
+		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+			Name: "VALKEY_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					Key: "password",
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: valkey.Name,
+					},
+				},
+			},
+		})
+		sts.Spec.Template.Spec.Containers[0].Command = []string{
+			"valkey-server",
+			"/valkey/etc/valkey.conf",
+			"--requirepass", "$(VALKEY_PASSWORD)",
+		}
 	}
 	if valkey.Spec.ExternalAccess != nil && valkey.Spec.ExternalAccess.Enabled {
 		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
