@@ -76,6 +76,10 @@ type ValkeySpec struct {
 	// External access configuration
 	ExternalAccess *ExternalAccess `json:"externalAccess,omitempty"`
 
+	// Anonymous Auth
+	// +kubebuilder:default:=false
+	AnonymousAuth bool `json:"anonymousAuth,omitempty"`
+
 	// Service Password
 	ServicePassword *corev1.SecretKeySelector `json:"servicePassword,omitempty"`
 }

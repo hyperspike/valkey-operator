@@ -62,6 +62,10 @@ spec:
           spec:
             description: ValkeySpec defines the desired state of Valkey
             properties:
+              anonymousAuth:
+                default: false
+                description: Anonymous Auth
+                type: boolean
               certIssuer:
                 description: Certificate Issuer
                 type: string
