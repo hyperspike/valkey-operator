@@ -62,6 +62,10 @@ spec:
           spec:
             description: ValkeySpec defines the desired state of Valkey
             properties:
+              anonymousAuth:
+                default: false
+                description: Anonymous Auth
+                type: boolean
               autoScaling:
                 description: Auto Scale - Automatically re-scale the number of shards
                   and replicas.

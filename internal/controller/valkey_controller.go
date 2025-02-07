@@ -106,6 +106,7 @@ var scripts embed.FS
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=statefulsets;deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
@@ -180,21 +181,28 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	if valkey.Spec.TLS {
-		if err := r.upsertCertificate(ctx, valkey); err != nil {
+	password := ""
+	if !valkey.Spec.AnonymousAuth {
+		var err error
+		password, err = r.upsertSecret(ctx, valkey, true)
+		if err != nil {
 			return ctrl.Result{}, err
 		}
-	}
-
-	password, err := r.upsertSecret(ctx, valkey, true)
-	if err != nil {
-		return ctrl.Result{}, err
 	}
 	if err := r.upsertPodDisruptionBudget(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
 	for i := 0; i < int(valkey.Spec.Shards); i++ {
 		if err := r.upsertServiceShard(ctx, valkey, i); err != nil {
+			return ctrl.Result{}, err
+		}
+		// we need the Cluster IP of the service to add it to the Certificate SAN
+		if valkey.Spec.TLS {
+			if err := r.upsertCertificateShard(ctx, valkey, i); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		if err := r.upsertPVCShard(ctx, valkey, i); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err := r.upsertDeploymentShard(ctx, valkey, i, false); err != nil {
@@ -230,18 +238,27 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func labels(valkey *hyperv1.Valkey) map[string]string {
-	l := valkey.Labels
+	l := copyMap(valkey.Labels)
 	l["app.kubernetes.io/name"] = Valkey
 	l["app.kubernetes.io/instance"] = valkey.Name
 	l["app.kubernetes.io/component"] = Valkey
 	return l
 }
 
+func copyMap(m map[string]string) map[string]string {
+	n := map[string]string{}
+	for k, v := range m {
+		n[k] = v
+	}
+	return n
+}
+
 func (r *ValkeyReconciler) getCACertificate(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
 	logger := log.FromContext(ctx)
 
 	cert := &certv1.Certificate{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, cert); err != nil {
+	// get the CA from the first shard, in the future we should get it from a client cert
+	if err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: fmt.Sprintf("%s-%d", valkey.Name, 0)}, cert); err != nil {
 		logger.Error(err, "failed to get ca certificate")
 		return "", err
 	}
@@ -274,7 +291,9 @@ func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valke
 
 	opt := valkeyClient.ClientOption{
 		InitAddress: []string{valkey.Name + "." + valkey.Namespace + ".svc:6379"},
-		Password:    password,
+	}
+	if !valkey.Spec.AnonymousAuth {
+		opt.Password = password
 	}
 	if valkey.Spec.TLS {
 		ca, err := r.getCACertificate(ctx, valkey)
@@ -320,11 +339,12 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 
 	logger.Info("upserting service")
 
+	l := labels(valkey)
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
-			Labels:    labels(valkey),
+			Labels:    l,
 		},
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceTypeClusterIP,
@@ -337,7 +357,7 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 					NodePort:   0,
 				},
 			},
-			Selector: labels(valkey),
+			Selector: l,
 		},
 	}
 	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
@@ -435,11 +455,12 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 		logger.Error(err, "failed to read ping_liveness_local.sh")
 		return err
 	}
+	l := labels(valkey)
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
-			Labels:    labels(valkey),
+			Labels:    l,
 		},
 		Data: map[string]string{
 			"valkey.conf":             conf.String(),
@@ -493,16 +514,22 @@ func (r *ValkeyReconciler) GetPassword(ctx context.Context, valkey *hyperv1.Valk
 }
 
 func (r *ValkeyReconciler) getPodNames(ctx context.Context, valkey *hyperv1.Valkey) ([]string, error) {
-	logger := log.FromContext(ctx)
+	//logger := log.FromContext(ctx)
 
-	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
-		logger.Error(err, "failed to list pods")
-		return nil, err
-	}
+	/*
+		pods := &corev1.PodList{}
+		if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+			logger.Error(err, "failed to list pods")
+			return nil, err
+		}
+		names := []string{}
+		for _, pod := range pods.Items {
+			names = append(names, pod.Name+"."+valkey.Name+"-headless."+valkey.Namespace+".svc")
+		}
+	*/
 	names := []string{}
-	for _, pod := range pods.Items {
-		names = append(names, pod.Name+"."+valkey.Name+"-headless."+valkey.Namespace+".svc")
+	for i := 0; i < int(valkey.Spec.Shards); i++ {
+		names = append(names, fmt.Sprintf("%s-%d.%s.svc", valkey.Name, i, valkey.Namespace))
 	}
 	return names, nil
 }
@@ -511,12 +538,6 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 	logger := log.FromContext(ctx)
 
 	logger.Info("initializing cluster")
-
-	password, err := r.GetPassword(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get password")
-		return err
-	}
 
 	podNames, err := r.getPodNames(ctx, valkey)
 	if err != nil {
@@ -529,6 +550,8 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		logger.Error(err, "failed to get pod ips")
 		return err
 	}
+	logger.Info("pod ips", "ips", tmpips)
+	logger.Info("pod names", "names", podNames)
 
 	ips := map[string]string{}
 	for ip, host := range tmpips {
@@ -545,9 +568,17 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		address := podName + ":6379"
 		opt := valkeyClient.ClientOption{
 			InitAddress:       []string{address},
-			Password:          password,
 			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
 		}
+		if !valkey.Spec.AnonymousAuth {
+			var err error
+			opt.Password, err = r.GetPassword(ctx, valkey)
+			if err != nil {
+				logger.Error(err, "failed to get password")
+				return err
+			}
+		}
+
 		if valkey.Spec.TLS {
 			ca, err := r.getCACertificate(ctx, valkey)
 			if err != nil {
@@ -683,10 +714,14 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 	if len(ips) == 0 {
 		return errors.NewBadRequest("external ip is empty")
 	}
-	password, err := r.GetPassword(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get password")
-		return err
+	password := ""
+	if !valkey.Spec.AnonymousAuth {
+		var err error
+		password, err = r.GetPassword(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get password")
+			return err
+		}
 	}
 	clients := map[string]valkeyClient.Client{}
 	for podName, ip := range ips {
@@ -694,8 +729,10 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 		logger.Info("working on node", "ip", ip, "pod", podName, "address", address)
 		opt := valkeyClient.ClientOption{
 			InitAddress:       []string{address},
-			Password:          password,
 			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
+		}
+		if !valkey.Spec.AnonymousAuth {
+			opt.Password = password
 		}
 		if valkey.Spec.TLS {
 			ca, err := r.getCACertificate(ctx, valkey)
@@ -1007,10 +1044,17 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySecret(ctx context.Context, 
             trusted_ca:
               filename: "/etc/valkey/certs/ca.crt"`
 	}
-	password, err := r.GetPassword(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get password")
-		return err
+	upstreamPassword := ""
+	downstreamPassword := ""
+	if !valkey.Spec.AnonymousAuth {
+		password, err := r.GetPassword(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get password")
+			return err
+		}
+		downstreamPassword = `          downstream_auth_password:
+            inline_string: "` + password + `"`
+		upstreamPassword = `            inline_string: "` + password + `"`
 	}
 	proxyLabels := labels(valkey)
 	proxyLabels["app.kubernetes.io/component"] = ValkeyProxy
@@ -1041,8 +1085,7 @@ static_resources:
           prefix_routes:
             catch_all_route:
               cluster: redis_cluster
-          downstream_auth_password:
-            inline_string: "` + password + `"
+` + downstreamPassword + `
 ` + tlsServer + `
   clusters:
   - name: redis_cluster
@@ -1065,7 +1108,7 @@ static_resources:
         "@type": type.googleapis.com/google.protobuf.Struct
         value:
           auth_password:
-            inline_string: "` + password + `"
+` + upstreamPassword + `
 ` + tlsClient + `
 admin:
   address:
@@ -1223,11 +1266,12 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 
 	logger.Info("upserting service")
 
+	l := labels(valkey)
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name + "-headless",
 			Namespace: valkey.Namespace,
-			Labels:    labels(valkey),
+			Labels:    l,
 		},
 		Spec: corev1.ServiceSpec{
 			Type:                     corev1.ServiceTypeClusterIP,
@@ -1245,7 +1289,7 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 					TargetPort: intstr.FromString("tcp-valkey-bus"),
 				},
 			},
-			Selector: labels(valkey),
+			Selector: l,
 		},
 	}
 	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
@@ -1275,6 +1319,7 @@ func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyp
 
 	l := labels(valkey)
 	l["app.kubernetes.io/component"] = Metrics
+	selectors := labels(valkey)
 
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1294,7 +1339,7 @@ func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyp
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},
-			Selector: labels(valkey),
+			Selector: selectors,
 		},
 	}
 	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
@@ -1371,7 +1416,24 @@ func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyp
 	return nil
 }
 
-func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv1.Valkey) error {
+func (r *ValkeyReconciler) svcIP(ctx context.Context, valkey *hyperv1.Valkey, shardId int) (string, error) {
+	logger := log.FromContext(ctx)
+
+	svc := &corev1.Service{}
+	name := fmt.Sprintf("%s-%d", valkey.Name, shardId)
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: name}, svc)
+	if err != nil {
+		logger.Error(err, "failed to fetch service")
+		return "", err
+	}
+	if svc.Spec.ClusterIP == "" {
+		logger.Info("cluster ip is empty")
+		return "", nil
+	}
+	return svc.Spec.ClusterIP, nil
+}
+
+func (r *ValkeyReconciler) upsertCertificateShard(ctx context.Context, valkey *hyperv1.Valkey, shardId int) error {
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting certificate")
@@ -1384,15 +1446,22 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 	logger.Info("using cluster domain " + clusterDomain)
 	issuer := valkey.Spec.CertIssuer
 	issuerType := valkey.Spec.CertIssuerType
+	ip, err := r.svcIP(ctx, valkey, shardId)
+	if err != nil {
+		logger.Error(err, "failed to get service ip")
+		return err
+	}
+	l := labels(valkey)
+	l["hyperspke.io/shard"] = strconv.Itoa(shardId)
 	cert := &certv1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      valkey.Name,
+			Name:      fmt.Sprintf("%s-%d", valkey.Name, shardId),
 			Namespace: valkey.Namespace,
-			Labels:    labels(valkey),
+			Labels:    l,
 		},
 		Spec: certv1.CertificateSpec{
-			CommonName: valkey.Name + "." + valkey.Namespace + ".svc",
-			SecretName: valkey.Name + "-tls",
+			CommonName: valkey.Name + "-" + strconv.Itoa(shardId) + "." + valkey.Namespace + ".svc",
+			SecretName: valkey.Name + "-" + strconv.Itoa(shardId) + "-tls",
 			IssuerRef: cmetav1.ObjectReference{
 				Name: issuer,
 				Kind: issuerType,
@@ -1402,14 +1471,12 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 				valkey.Name,
 				valkey.Name + "." + valkey.Namespace + ".svc",
 				valkey.Name + "." + valkey.Namespace + ".svc." + clusterDomain,
-				valkey.Name + "-headless",
-				valkey.Name + "-headless." + valkey.Namespace + ".svc",
-				valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
-				"*." + valkey.Name + "-headless." + valkey.Namespace + ".svc",
-				"*." + valkey.Name + "-headless." + valkey.Namespace + ".svc." + clusterDomain,
+				valkey.Name + "-" + strconv.Itoa(shardId) + "." + valkey.Namespace + ".svc",
+				valkey.Name + "-" + strconv.Itoa(shardId) + "." + valkey.Namespace + ".svc." + clusterDomain,
 			},
 			IPAddresses: []string{
 				"127.0.0.1",
+				ip,
 			},
 		},
 	}
@@ -1417,14 +1484,14 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 	if err := controllerutil.SetControllerReference(valkey, cert, r.Scheme); err != nil {
 		return err
 	}
-	err = r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, cert)
+	err = r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: cert.Name}, cert)
 	if err != nil && errors.IsNotFound(err) {
 		if err := r.Create(ctx, cert); err != nil {
 			logger.Error(err, "failed to create certificate")
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Created",
-			fmt.Sprintf("Certificate %s/%s is created", valkey.Namespace, valkey.Name))
+			fmt.Sprintf("Certificate %s/%s is created", valkey.Namespace, cert.Name))
 	} else if err != nil {
 		logger.Error(err, "failed to fetch certificate")
 		return err
@@ -1469,11 +1536,12 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 		return "", err
 	}
 
+	l := labels(valkey)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      valkey.Name,
 			Namespace: valkey.Namespace,
-			Labels:    labels(valkey),
+			Labels:    l,
 		},
 		Data: map[string][]byte{
 			"password": []byte(rs),
@@ -1543,15 +1611,16 @@ func removePort(addr string) string {
 func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint: gocyclo
 	logger := log.FromContext(ctx)
 
-	password, err := r.upsertSecret(ctx, valkey, true)
-	if err != nil {
-		return err
-	}
-
 	// connect to the first node!
 	opt := valkeyClient.ClientOption{
 		InitAddress: []string{valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc:6379"},
-		Password:    password,
+	}
+	if !valkey.Spec.AnonymousAuth {
+		var err error
+		opt.Password, err = r.upsertSecret(ctx, valkey, true)
+		if err != nil {
+			return err
+		}
 	}
 	if valkey.Spec.TLS {
 		ca, err := r.getCACertificate(ctx, valkey)
@@ -1713,14 +1782,22 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 func (r *ValkeyReconciler) getPodIPs(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 
-	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
-		logger.Error(err, "failed to list pods")
+	svcs := &corev1.ServiceList{}
+	l := labels(valkey)
+	logger.Info("listing svcs with labels", "labels", l)
+	if err := r.List(ctx, svcs, client.InNamespace(valkey.Namespace), client.MatchingLabels(l)); err != nil {
+		logger.Error(err, "failed to list svcs")
 		return nil, err
 	}
 	ret := map[string]string{}
-	for _, pod := range pods.Items {
-		ret[pod.Status.PodIP] = pod.Name + "." + valkey.Name + "-headless." + valkey.Namespace + ".svc"
+	logger.Info("found svcs", "svcs", len(svcs.Items))
+	for _, svc := range svcs.Items {
+		logger.Info("svc", "svc", svc.Name)
+		_, ok := svc.ObjectMeta.Labels["hyperspike.io/shard"]
+		if !ok {
+			continue
+		}
+		ret[svc.Spec.ClusterIP] = svc.Name + "." + valkey.Namespace + ".svc"
 	}
 	return ret, nil
 }
@@ -1894,28 +1971,6 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 				Value: "valkey://127.0.0.1:6379",
 			},
 			{
-				Name: "VALKEY_PASSWORD",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						Key: "password",
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: valkey.Name,
-						},
-					},
-				},
-			},
-			{
-				Name: "REDIS_PASSWORD",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						Key: "password",
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: valkey.Name,
-						},
-					},
-				},
-			},
-			{
 				Name:  "VALKEY_EXPORTER_WEB_LISTEN_ADDRESS",
 				Value: ":9121",
 			},
@@ -1951,6 +2006,30 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			},
 		},
 	}
+	if !valkey.Spec.AnonymousAuth {
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name: "VALKEY_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					Key: "password",
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: valkey.Name,
+					},
+				},
+			},
+		})
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name: "REDIS_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					Key: "password",
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: valkey.Name,
+					},
+				},
+			},
+		})
+	}
 	if valkey.Spec.TLS {
 		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
 			Name:      "valkey-tls",
@@ -1981,11 +2060,16 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 	return container
 }
 
-func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
+func (r *ValkeyReconciler) upsertPVCShard(ctx context.Context, valkey *hyperv1.Valkey, shard int) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upserting pvc")
+
 	pv := corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "valkey-data",
-			Labels: labels(valkey),
+			Name:      fmt.Sprintf("valkey-data-%d", shard),
+			Namespace: valkey.Namespace,
+			Labels:    labels(valkey),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
@@ -1998,13 +2082,16 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 			},
 		},
 	}
+	l := labels(valkey)
+	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shard)
 	if valkey.Spec.Storage != nil {
 		pv = *valkey.Spec.Storage
-		pv.ObjectMeta.Name = "valkey-data"
+		pv.ObjectMeta.Name = fmt.Sprintf("valkey-data-%d", shard)
+		pv.ObjectMeta.Namespace = valkey.Namespace
 		if pv.ObjectMeta.Labels == nil {
-			pv.ObjectMeta.Labels = labels(valkey)
+			pv.ObjectMeta.Labels = l
 		} else {
-			for k, v := range labels(valkey) {
+			for k, v := range l {
 				pv.ObjectMeta.Labels[k] = v
 			}
 		}
@@ -2018,7 +2105,28 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 			pv.Spec.Resources.Requests["storage"] = func(s string) resource.Quantity { return resource.MustParse(s) }(DefaultVolumeSize)
 		}
 	}
-	return pv
+	if err := controllerutil.SetControllerReference(valkey, &pv, r.Scheme); err != nil {
+		logger.Error(err, "failed to set controller reference")
+		return err
+	}
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: pv.Name}, &pv)
+	if err != nil && errors.IsNotFound(err) {
+		if err := r.Create(ctx, &pv); err != nil {
+			logger.Error(err, "failed to create pvc")
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("PVC %s/%s is created", valkey.Namespace, pv.Name))
+	} else if err != nil {
+		logger.Error(err, "failed to fetch pvc")
+		return err
+	} else if err == nil && false { // detect changes
+		if err := r.Update(ctx, &pv); err != nil {
+			logger.Error(err, "failed to update pvc")
+			return err
+		}
+	}
+	return nil
 }
 func getResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequirements {
 	if valkey.Spec.Resources != nil {
@@ -2081,10 +2189,10 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 		image = valkey.Spec.Image
 	}
 	l := labels(valkey)
-	l["hyperspike.io/valkey-shard"] = fmt.Sprintf("%d", shardId)
+	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
 	sts := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      valkey.Name,
+			Name:      fmt.Sprintf("%s-%d", valkey.Name, shardId),
 			Namespace: valkey.Namespace,
 			Labels:    l,
 		},
@@ -2148,31 +2256,7 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 							Command: []string{
 								"valkey-server",
 								"/valkey/etc/valkey.conf",
-								"--requirepass", "$(VALKEY_PASSWORD)",
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "REDISCLI_AUTH",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											Key: "password",
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: valkey.Name,
-											},
-										},
-									},
-								},
-								{
-									Name: "VALKEY_PASSWORD",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											Key: "password",
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: valkey.Name,
-											},
-										},
-									},
-								},
+								"--protected-mode", "no",
 							},
 							Ports: []corev1.ContainerPort{
 								{
@@ -2282,6 +2366,14 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 								EmptyDir: &corev1.EmptyDirVolumeSource{},
 							},
 						},
+						{
+							Name: "valkey-data",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: fmt.Sprintf("valkey-data-%d", shardId),
+								},
+							},
+						},
 					},
 				},
 			},
@@ -2349,10 +2441,39 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 			Name: "valkey-tls",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: valkey.Name + "-tls",
+					SecretName: fmt.Sprintf("%s-%d-tls", valkey.Name, shardId),
 				},
 			},
 		})
+	}
+	if !valkey.Spec.AnonymousAuth {
+		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+			Name: "REDISCLI_AUTH",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					Key: "password",
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: valkey.Name,
+					},
+				},
+			},
+		})
+		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+			Name: "VALKEY_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					Key: "password",
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: valkey.Name,
+					},
+				},
+			},
+		})
+		sts.Spec.Template.Spec.Containers[0].Command = []string{
+			"valkey-server",
+			"/valkey/etc/valkey.conf",
+			"--requirepass", "$(VALKEY_PASSWORD)",
+		}
 	}
 	if valkey.Spec.ExternalAccess != nil && valkey.Spec.ExternalAccess.Enabled {
 		sts.Spec.Template.Spec.Containers[0].Env = append(sts.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
@@ -2367,7 +2488,7 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 		return err
 	}
 
-	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, sts)
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: fmt.Sprintf("%s-%d", valkey.Name, shardId)}, sts)
 	if err != nil && errors.IsNotFound(err) {
 		if err := r.Create(ctx, sts); err != nil {
 			logger.Error(err, "failed to update deployment")

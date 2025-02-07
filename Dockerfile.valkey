@@ -1,6 +1,6 @@
 FROM alpine:3.21.2 AS builder
 
-ARG VALKEY_VERSION=8.0.1
+ARG VALKEY_VERSION
 
 WORKDIR /home/valkey
 
