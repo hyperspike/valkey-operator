@@ -1898,9 +1898,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Name: "VALKEY_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: valkey.Spec.ServicePassword.Key,
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: valkey.Spec.ServicePassword.Name,
 					},
 				},
 			},
@@ -1909,9 +1909,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Name: "REDIS_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: valkey.Spec.ServicePassword.Key,
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: valkey.Spec.ServicePassword.Name,
 					},
 				},
 			},
@@ -2340,9 +2340,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Name: "REDISCLI_AUTH",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: valkey.Spec.ServicePassword.Key,
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: valkey.Spec.ServicePassword.Name,
 					},
 				},
 			},
@@ -2351,9 +2351,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Name: "VALKEY_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: valkey.Spec.ServicePassword.Key,
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: valkey.Spec.ServicePassword.Name,
 					},
 				},
 			},
