@@ -534,38 +534,77 @@ func (r *ValkeyReconciler) getPodNames(ctx context.Context, valkey *hyperv1.Valk
 	return names, nil
 }
 
+type topology struct {
+	shardId int
+	host    string
+	svcIP   string
+	podIP   string
+}
+
+func (r *ValkeyReconciler) buildTopology(ctx context.Context, valkey *hyperv1.Valkey) ([]topology, error) {
+	logger := log.FromContext(ctx)
+
+	podNames, err := r.getPodNames(ctx, valkey)
+	if err != nil {
+		logger.Error(err, "failed to get pod names")
+		return nil, err
+	}
+
+	svcIPs, err := r.getSvcIPs(ctx, valkey)
+	if err != nil {
+		logger.Error(err, "failed to get svc ips")
+		return nil, err
+	}
+
+	podIPs, err := r.getPodIPs(ctx, valkey)
+	if err != nil {
+		logger.Error(err, "failed to get pod ips")
+		return nil, err
+	}
+
+	topo := []topology{}
+	for i, podName := range podNames {
+		topo = append(topo, topology{
+			shardId: i,
+			host:    podName,
+			svcIP:   svcIPs[podName],
+			podIP:   podIPs[podName],
+		})
+	}
+	return topo, nil
+}
+
+func (r *ValkeyReconciler) getSvcIPs(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
+	logger := log.FromContext(ctx)
+
+	svcs := &corev1.ServiceList{}
+	if err := r.List(ctx, svcs, client.InNamespace(valkey.Namespace)); err != nil {
+		logger.Error(err, "failed to list services")
+		return nil, err
+	}
+	ips := map[string]string{}
+	for _, svc := range svcs.Items {
+		if svc.Labels["app.kubernetes.io/component"] == Valkey && svc.Labels["app.kubernetes.io/instance"] == valkey.Name {
+			ips[svc.Name] = svc.Spec.ClusterIP
+		}
+	}
+	return ips, nil
+}
+
 func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
 	logger := log.FromContext(ctx)
 
 	logger.Info("initializing cluster")
 
-	podNames, err := r.getPodNames(ctx, valkey)
+	topo, err := r.buildTopology(ctx, valkey)
 	if err != nil {
-		logger.Error(err, "failed to get pod names")
+		logger.Error(err, "failed to build topology")
 		return err
-	}
-
-	tmpips, err := r.getPodIPs(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get pod ips")
-		return err
-	}
-	logger.Info("pod ips", "ips", tmpips)
-	logger.Info("pod names", "names", podNames)
-
-	ips := map[string]string{}
-	for ip, host := range tmpips {
-		ips[host] = ip
 	}
 
 	clients := map[string]valkeyClient.Client{}
-	for _, podName := range podNames {
-		_, ok := ips[podName]
-		if !ok {
-			logger.Info("ip not found", "pod", podName)
-			return fmt.Errorf("ip not found for %s", podName)
-		}
-		address := podName + ":6379"
+	for _, t := range topo {
+		address := t.host + ":6379"
 		opt := valkeyClient.ClientOption{
 			InitAddress:       []string{address},
 			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
@@ -599,12 +638,12 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 				RootCAs:    certpool,
 			}
 		}
-		clients[podName], err = valkeyClient.NewClient(opt)
+		clients[t.host], err = valkeyClient.NewClient(opt)
 		if err != nil {
 			logger.Error(err, "failed to create valkey client")
 			return err
 		}
-		defer clients[podName].Close()
+		defer clients[t.host].Close()
 	}
 
 	counter := 0
@@ -646,7 +685,7 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		logger.Info("setting slotrange", "shard", i)
 		r.Recorder.Event(valkey, "Normal", "Setting",
 			fmt.Sprintf("Setting slotrange on shard %d for %s/%s", i, valkey.Namespace, valkey.Name))
-		info, err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterInfo().Build()).ToString()
+		info, err := clients[topo[i].host].Do(ctx, clients[topo[i].host].B().ClusterInfo().Build()).ToString()
 		if err != nil {
 			logger.Error(err, "failed to get cluster into")
 			return err
@@ -671,7 +710,7 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 		if i == int(valkey.Spec.Shards)-1 {
 			end = 16383
 		}
-		if err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterAddslotsrange().StartSlotEndSlot().StartSlotEndSlot(int64(start), int64(end)).Build()).Error(); err != nil {
+		if err := clients[topo[i].host].Do(ctx, clients[topo[i].host].B().ClusterAddslotsrange().StartSlotEndSlot().StartSlotEndSlot(int64(start), int64(end)).Build()).Error(); err != nil {
 			logger.Error(err, "failed to set slotrange")
 			return err
 		}
@@ -679,21 +718,16 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 	}
 
 	// set cluster meet
-	for _, podName := range podNames {
-		for _, shard := range podNames {
-			if shard == podName {
+	for _, pod := range topo {
+		for _, shard := range topo {
+			if shard.host == pod.host {
 				continue
 			}
-			logger.Info("node meeting peer", "peer", shard, "pod", podName)
+			logger.Info("node meeting peer", "peer", shard.host, "pod", pod.host)
 			r.Recorder.Event(valkey, "Normal", "Setting",
-				fmt.Sprintf("Node meeting peer %s on pod %s for %s/%s", shard, podName, valkey.Namespace, valkey.Name))
-			ip, ok := ips[shard]
-			if !ok {
-				logger.Info("ip not found", "pod", shard)
-				return fmt.Errorf("ip not found for %s", shard)
-			}
-			if err := clients[podName].Do(ctx, clients[podName].B().ClusterMeet().Ip(ip).Port(6379).Build()).Error(); err != nil {
-				logger.Error(err, "failed to cluster meet", "shard", shard, "ip", shard, "pod", podName)
+				fmt.Sprintf("Node meeting peer %s on pod %s for %s/%s", shard.host, pod.host, valkey.Namespace, valkey.Name))
+			if err := clients[pod.host].Do(ctx, clients[pod.host].B().ClusterMeet().Ip(shard.podIP).Port(6379).Build()).Error(); err != nil {
+				logger.Error(err, "failed to cluster meet", "shard", shard.host, "ip", shard.podIP, "pod", pod.host)
 				return err
 			}
 		}
@@ -1782,22 +1816,15 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 func (r *ValkeyReconciler) getPodIPs(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 
-	svcs := &corev1.ServiceList{}
+	pods := &corev1.PodList{}
 	l := labels(valkey)
-	logger.Info("listing svcs with labels", "labels", l)
-	if err := r.List(ctx, svcs, client.InNamespace(valkey.Namespace), client.MatchingLabels(l)); err != nil {
-		logger.Error(err, "failed to list svcs")
+	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(l)); err != nil {
+		logger.Error(err, "failed to list pods")
 		return nil, err
 	}
 	ret := map[string]string{}
-	logger.Info("found svcs", "svcs", len(svcs.Items))
-	for _, svc := range svcs.Items {
-		logger.Info("svc", "svc", svc.Name)
-		_, ok := svc.ObjectMeta.Labels["hyperspike.io/shard"]
-		if !ok {
-			continue
-		}
-		ret[svc.Spec.ClusterIP] = svc.Name + "." + valkey.Namespace + ".svc"
+	for _, pod := range pods.Items {
+		ret[pod.Status.PodIP] = pod.Name
 	}
 	return ret, nil
 }
