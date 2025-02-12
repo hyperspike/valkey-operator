@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: valkey-operator
+  name: valkey-viewer-role
+rules:
+- apiGroups:
+  - hyperspike.io
+  resources:
+  - valkeys
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - hyperspike.io
+  resources:
+  - valkeys/status
+  verbs:
+  - get
