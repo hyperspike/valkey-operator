@@ -433,6 +433,10 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 func (r *ValkeyReconciler) GetPassword(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
 	logger := log.FromContext(ctx)
 
+	if valkey.Spec.ServicePassword != nil {
+		return r.getServicePassword(ctx, valkey)
+	}
+
 	secret := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, secret); err != nil {
 		logger.Error(err, "failed to get secret")
@@ -1898,9 +1902,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Name: "VALKEY_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: valkey.Spec.ServicePassword.Key,
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: valkey.Spec.ServicePassword.Name,
 					},
 				},
 			},
@@ -1909,9 +1913,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Name: "REDIS_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: valkey.Spec.ServicePassword.Key,
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: valkey.Spec.ServicePassword.Name,
 					},
 				},
 			},
@@ -2340,9 +2344,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Name: "REDISCLI_AUTH",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: valkey.Spec.ServicePassword.Key,
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: valkey.Spec.ServicePassword.Name,
 					},
 				},
 			},
@@ -2351,9 +2355,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Name: "VALKEY_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: valkey.Spec.ServicePassword.Key,
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: valkey.Spec.ServicePassword.Name,
 					},
 				},
 			},
