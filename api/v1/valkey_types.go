@@ -82,6 +82,9 @@ type ValkeySpec struct {
 
 	// Service Password
 	ServicePassword *corev1.SecretKeySelector `json:"servicePassword,omitempty"`
+
+	// Node Selector
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration
