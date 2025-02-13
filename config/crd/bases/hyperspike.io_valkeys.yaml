@@ -80,6 +80,11 @@ spec:
                 default: cluster.local
                 description: Cluster Domain - used for DNS
                 type: string
+              clusterPreferredEndpointType:
+                default: hostname
+                description: Which endpoint is shown as the preferred endpoint valid
+                  values are 'ip', 'hostname', or 'unknown-endpoint'.
+                type: string
               exporterImage:
                 description: Exporter Image to use
                 type: string
