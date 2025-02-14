@@ -80,6 +80,15 @@ spec:
                 default: cluster.local
                 description: Cluster Domain - used for DNS
                 type: string
+              clusterPreferredEndpointType:
+                default: ip
+                description: Which endpoint is shown as the preferred endpoint valid
+                  values are 'ip', 'hostname', or 'unknown-endpoint'.
+                enum:
+                - ip
+                - hostname
+                - unknown-endpoint
+                type: string
               exporterImage:
                 description: Exporter Image to use
                 type: string
@@ -211,6 +220,11 @@ spec:
               image:
                 description: Image to use
                 type: string
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                description: Node Selector
+                type: object
               nodes:
                 default: 3
                 description: Number of shards

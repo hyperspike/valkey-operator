@@ -85,6 +85,14 @@ type ValkeySpec struct {
 
 	// Tolerations
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Node Selector
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Which endpoint is shown as the preferred endpoint valid values are 'ip', 'hostname', or 'unknown-endpoint'.
+	// +kubebuilder:default:="ip"
+	// +kubebuilder:validation:Enum=ip;hostname;unknown-endpoint
+	ClusterPreferredEndpointType string `json:"clusterPreferredEndpointType,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration
