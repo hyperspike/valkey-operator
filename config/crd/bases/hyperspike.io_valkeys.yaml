@@ -211,6 +211,11 @@ spec:
               image:
                 description: Image to use
                 type: string
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                description: Node Selector
+                type: object
               nodes:
                 default: 3
                 description: Number of shards

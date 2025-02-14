@@ -85,6 +85,9 @@ type ValkeySpec struct {
 
 	// Tolerations
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Node Selector
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration

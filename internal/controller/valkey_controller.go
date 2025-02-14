@@ -2102,7 +2102,8 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 							},
 						},
 					},
-					Tolerations: valkey.Spec.Tolerations,
+					Tolerations:  valkey.Spec.Tolerations,
+					NodeSelector: valkey.Spec.NodeSelector,
 					Containers: []corev1.Container{
 						{
 							Image: image,
