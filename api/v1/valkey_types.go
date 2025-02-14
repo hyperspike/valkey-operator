@@ -82,6 +82,9 @@ type ValkeySpec struct {
 
 	// Service Password
 	ServicePassword *corev1.SecretKeySelector `json:"servicePassword,omitempty"`
+
+	// Tolerations
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration
