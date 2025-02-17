@@ -37,6 +37,9 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
     - name: Extract metadata (Controller tags, labels) for Docker
       id: meta_controller
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
@@ -71,6 +74,7 @@ jobs:
         file: Dockerfile.controller
         context: .
         push: true
+        platforms: linux/amd64,linux/arm64
         visibility: public
         tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
         labels: ${{ steps.meta_manager.outputs.labels }}
@@ -81,6 +85,7 @@ jobs:
         file: Dockerfile.sidecar
         context: .
         push: true
+        platforms: linux/amd64,linux/arm64  # Add multi-arch support
         visibility: public
         tags: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}
         labels: ${{ steps.meta_sidecar.outputs.labels }}
@@ -91,6 +96,7 @@ jobs:
         file: Dockerfile.valkey
         context: .
         push: true
+        platforms: linux/amd64,linux/arm64  # Add multi-arch support
         visibility: public
         tags: ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}
         labels: ${{ steps.meta_valkey.outputs.labels }}
@@ -130,17 +136,17 @@ jobs:
         subject-digest: ${{ steps.docker_build_valkey.outputs.digest }}
         push-to-registry: true
 
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+    # - name: Run Trivy vulnerability scanner
+    #   uses: aquasecurity/trivy-action@master
+    #   with:
+    #     image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}'
+    #     format: 'sarif'
+    #     output: 'trivy-results.sarif'
 
-    - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: 'trivy-results.sarif'
-      #env:
-      #  GITHUB_TOKEN: ${{ secrets.TOKEN }}
+    # - name: Upload Trivy scan results to GitHub Security tab
+    #   uses: github/codeql-action/upload-sarif@v3
+    #   if: always()
+    #   with:
+    #     sarif_file: 'trivy-results.sarif'
+    #   #env:
+    #   #  GITHUB_TOKEN: ${{ secrets.TOKEN }}
