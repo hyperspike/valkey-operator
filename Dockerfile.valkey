@@ -1,4 +1,4 @@
-FROM alpine:3.21.2 AS builder
+FROM alpine:3.21.3 AS builder
 
 ARG VALKEY_VERSION=8.0.2
 
@@ -18,7 +18,7 @@ RUN apk add --no-cache --virtual .build-deps \
 	&& make PREFIX=/usr BUILD_TLS=yes \
 	&& make install BUILD_TLS=yes PREFIX=/home/valkey/build
 
-FROM alpine:3.21.2 AS valkey
+FROM alpine:3.21.3 AS valkey
 
 RUN apk add --no-cache \
 	openssl=3.3.3-r0 \
