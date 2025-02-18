@@ -1405,14 +1405,14 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 	return nil
 }
 
-func getServicePasswordKey(valkey *hyperv1.Valkey) (string) {
+func getServicePasswordKey(valkey *hyperv1.Valkey) string {
 	if valkey.Spec.ServicePassword == nil {
 		return "password"
 	}
 	return valkey.Spec.ServicePassword.Key
 }
 
-func getServicePasswordName(valkey *hyperv1.Valkey) (string) {
+func getServicePasswordName(valkey *hyperv1.Valkey) string {
 	if valkey.Spec.ServicePassword == nil {
 		return valkey.Name
 	}
