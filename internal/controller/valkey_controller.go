@@ -1405,22 +1405,36 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 	return nil
 }
 
+func getServicePasswordKey(valkey *hyperv1.Valkey) (string) {
+	if valkey.Spec.ServicePassword == nil {
+		return "password"
+	}
+	return valkey.Spec.ServicePassword.Key
+}
+
+func getServicePasswordName(valkey *hyperv1.Valkey) (string) {
+	if valkey.Spec.ServicePassword == nil {
+		return valkey.Name
+	}
+	return valkey.Spec.ServicePassword.
+}
+
 func (r *ValkeyReconciler) getServicePassword(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
 	logger := log.FromContext(ctx)
 
 	secret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Spec.ServicePassword.Name}, secret)
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: getServicePasswordName(valkey)}, secret)
 	if err != nil {
-		logger.Error(err, "failed to fetch secret", "name", valkey.Spec.ServicePassword.Name)
+		logger.Error(err, "failed to fetch secret", "name", getServicePasswordName(valkey))
 		return "", err
 	}
 	if secret.Data == nil {
-		return "", fmt.Errorf("secret %s/%s is empty", valkey.Namespace, valkey.Spec.ServicePassword.Name)
+		return "", fmt.Errorf("secret %s/%s is empty", valkey.Namespace, getServicePasswordName(valkey))
 	}
-	if secret.Data[valkey.Spec.ServicePassword.Key] == nil {
-		return "", fmt.Errorf("key %s is empty in secret %s/%s", valkey.Spec.ServicePassword.Key, valkey.Namespace, valkey.Spec.ServicePassword.Name)
+	if secret.Data[getServicePasswordKey(valkey)] == nil {
+		return "", fmt.Errorf("key %s is empty in secret %s/%s", getServicePasswordKey(valkey), valkey.Namespace, getServicePasswordName(valkey))
 	}
-	return string(secret.Data[valkey.Spec.ServicePassword.Key]), nil
+	return string(secret.Data[getServicePasswordKey(valkey)]), nil
 }
 
 func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey, once bool) (string, error) {
@@ -1902,9 +1916,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Name: "VALKEY_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: valkey.Spec.ServicePassword.Key,
+					Key: getServicePasswordKey(valkey),
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Spec.ServicePassword.Name,
+						Name: getServicePasswordName(valkey),
 					},
 				},
 			},
@@ -1913,9 +1927,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Name: "REDIS_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: valkey.Spec.ServicePassword.Key,
+					Key: getServicePasswordKey(valkey),
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Spec.ServicePassword.Name,
+						Name: getServicePasswordName(valkey),
 					},
 				},
 			},
@@ -2346,9 +2360,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Name: "REDISCLI_AUTH",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: valkey.Spec.ServicePassword.Key,
+					Key: getServicePasswordKey(valkey),
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Spec.ServicePassword.Name,
+						Name: getServicePasswordName(valkey),
 					},
 				},
 			},
@@ -2357,9 +2371,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Name: "VALKEY_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: valkey.Spec.ServicePassword.Key,
+					Key: getServicePasswordKey(valkey),
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Spec.ServicePassword.Name,
+						Name: getServicePasswordName(valkey),
 					},
 				},
 			},
