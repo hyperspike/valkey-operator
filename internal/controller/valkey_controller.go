@@ -1416,7 +1416,7 @@ func getServicePasswordName(valkey *hyperv1.Valkey) (string) {
 	if valkey.Spec.ServicePassword == nil {
 		return valkey.Name
 	}
-	return valkey.Spec.ServicePassword.
+	return valkey.Spec.ServicePassword.Name
 }
 
 func (r *ValkeyReconciler) getServicePassword(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
