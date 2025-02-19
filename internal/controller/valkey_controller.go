@@ -231,6 +231,10 @@ func labels(valkey *hyperv1.Valkey) map[string]string {
 	return l
 }
 
+func annotations(valkey *hyperv1.Valkey) map[string]string {
+	return valkey.Annotations
+}
+
 func (r *ValkeyReconciler) getCACertificate(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -2088,7 +2092,8 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels(valkey),
+					Labels:      labels(valkey),
+					Annotations: annotations(valkey),
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: valkey.Name,
