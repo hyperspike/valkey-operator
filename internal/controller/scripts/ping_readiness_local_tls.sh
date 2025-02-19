@@ -5,7 +5,7 @@ VALKEY_STATUS_FILE=/tmp/.valkey_cluster_check
 if [ ! -z "$VALKEY_PASSWORD" ]; then export REDISCLI_AUTH=$VALKEY_PASSWORD; fi;
 
 	response=$(
-	timeout -s 15 $1 \
+	timeout --foreground -s 15 $1 \
 	valkey-cli \
 		-h localhost \
 		-p $VALKEY_TLS_PORT_NUMBER \
@@ -28,7 +28,7 @@ fi
 count=$(echo $VALKEY_NODES | wc -w)
 if [ ! -f "$VALKEY_STATUS_FILE" ] && [ "$count" != "1" ]; then
 	response=$(
-		timeout -s 15 $1 \
+		timeout --foreground -s 15 $1 \
 		valkey-cli \
 			-h localhost \
 			-p $VALKEY_TLS_PORT_NUMBER \
