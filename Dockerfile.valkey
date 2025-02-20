@@ -23,6 +23,7 @@ FROM alpine:3.21.3 AS valkey
 RUN apk add --no-cache \
 	openssl=3.3.3-r0 \
 	ca-certificates=20241121-r1 \
+	coreutils=9.5-r2 \
 	&& addgroup -S valkey -g 1009 \
 	&& adduser -S -G valkey valkey -u 1009 \
 	&& mkdir /etc/valkey \
