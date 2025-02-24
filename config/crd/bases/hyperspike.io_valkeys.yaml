@@ -205,6 +205,8 @@ spec:
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
                         type: object
+                    required:
+                    - replicas
                     type: object
                   type:
                     default: Proxy
@@ -216,6 +218,9 @@ spec:
                     - LoadBalancer
                     - Proxy
                     type: string
+                required:
+                - enabled
+                - type
                 type: object
               image:
                 description: Image to use
@@ -780,6 +785,11 @@ spec:
                 description: Turn on an init container to set permissions on the persistent
                   volume
                 type: boolean
+            required:
+            - anonymousAuth
+            - clusterDomain
+            - prometheus
+            - volumePermissions
             type: object
           status:
             description: ValkeyStatus defines the observed state of Valkey
