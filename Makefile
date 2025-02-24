@@ -243,12 +243,12 @@ GOSEC ?= $(LOCALBIN)/gosec-$(GOSEC_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
-CONTROLLER_TOOLS_VERSION ?= v0.16.5
+CONTROLLER_TOOLS_VERSION ?= v0.17.2
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.61.0
 HELMIFY_VERSION ?= v0.4.14
 HELM_VERSION ?= v3.15.4
-GOSEC_VERSION ?= v2.20.0
+GOSEC_VERSION ?= v2.22.1
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
 	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
