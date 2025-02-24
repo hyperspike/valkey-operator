@@ -168,6 +168,11 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build-and-push-image
+    permissions:
+      contents: read # for trivy scan upload
+      packages: write
+      id-token: write
+      security-events: write
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
