@@ -61,12 +61,12 @@ jobs:
       id: meta_sidecar
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
-        images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}
+        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar:${{ env.RELEASE_VERSION }}
     - name: Extract metadata (Valkey tags, labels) for Docker
       id: meta_valkey
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
-        images: ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}
+        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ env.VALKEY_VERSION }}
 
     - name: Setup Go ${{ matrix.go-version }}
       uses: actions/setup-go@v5
@@ -100,7 +100,7 @@ jobs:
         visibility: public
         platforms: ${{ matrix.platform }}
         labels: ${{ steps.meta_sidecar.outputs.labels }}
-        outputs: type=image,"name=${{ env.REGISTRY }}/hyperspike/valkey-sidecar",push-by-digest=true,name-canonical=true,push=true
+        outputs: type=image,"name=${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar",push-by-digest=true,name-canonical=true,push=true
     - name: Build and push Valkey image
       uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991
       id: docker_build_valkey
@@ -110,7 +110,7 @@ jobs:
         visibility: public
         platforms: ${{ matrix.platform }}
         labels: ${{ steps.meta_valkey.outputs.labels }}
-        outputs: type=image,"name=${{ env.REGISTRY }}/hyperspike/valkey",push-by-digest=true,name-canonical=true,push=true
+        outputs: type=image,"name=${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey",push-by-digest=true,name-canonical=true,push=true
 
     - name: Set up Cosign
       uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
@@ -120,10 +120,10 @@ jobs:
         cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}@${{ steps.docker_build_controller.outputs.digest }}
     - name: Sign Sidecar image with GitHub OIDC Token
       run: |
-        cosign sign --yes ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}@${{ steps.docker_build_sidecar.outputs.digest }}
+        cosign sign --yes ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar:${{ env.RELEASE_VERSION }}@${{ steps.docker_build_sidecar.outputs.digest }}
     - name: Sign Valkey image with GitHub OIDC Token
       run: |
-        cosign sign --yes ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}@${{ steps.docker_build_valkey.outputs.digest }}
+        cosign sign --yes ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ env.VALKEY_VERSION }}@${{ steps.docker_build_valkey.outputs.digest }}
 
     - name: Attest the Controller image
       uses: actions/attest-build-provenance@v2
@@ -136,14 +136,14 @@ jobs:
       uses: actions/attest-build-provenance@v2
       id: attest_sidecar
       with:
-        subject-name: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar
+        subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar
         subject-digest: ${{ steps.docker_build_sidecar.outputs.digest }}
         push-to-registry: true
     - name: Attest the Valkey image
       uses: actions/attest-build-provenance@v2
       id: attest_valkey
       with:
-        subject-name: ${{ env.REGISTRY }}/hyperspike/valkey
+        subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey
         subject-digest: ${{ steps.docker_build_valkey.outputs.digest }}
         push-to-registry: true
     - name: Export digest
@@ -207,32 +207,32 @@ jobs:
         id: meta_sidecar
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar
           tags: ${{ env.RELEASE_VERSION }}
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
         run: |
           cd sidecar
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/hyperspike/valkey-sidecar@sha256:%s ' *)
+            $(printf '${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar@sha256:%s ' *)
       - name: Docker meta
         id: meta_valkey
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/hyperspike/valkey
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey
           tags: ${{ env.VALKEY_VERSION }}
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
         run: |
           cd valkey
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/hyperspike/valkey@sha256:%s ' *)
+            $(printf '${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey@sha256:%s ' *)
 
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta_controller.outputs.version }}
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ steps.meta_sidecar.outputs.version }}
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/hyperspike/valkey:${{ steps.meta_valkey.outputs.version }}
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar:${{ steps.meta_sidecar.outputs.version }}
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ steps.meta_valkey.outputs.version }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
