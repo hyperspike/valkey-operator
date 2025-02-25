@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	hyperspikeiov1 "hyperspike.io/valkey-operator/api/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -43,5 +44,64 @@ func TestLabels(t *testing.T) {
 	}
 	if result["app.kubernetes.io/instance"] != "test-resource" {
 		t.Errorf("Expected %v, got %v", "test-resource", result["app.kubernetes.io/instance"])
+	}
+}
+
+func TestAnnotations(t *testing.T) {
+	testAnnotations := map[string]string{
+		"app": "valkey",
+	}
+	valkey := &hyperspikeiov1.Valkey{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "test-resource",
+			Namespace:   "default",
+			Annotations: testAnnotations,
+		},
+	}
+	result := annotations(valkey)
+	if testAnnotations["app"] != result["app"] {
+		t.Errorf("Expected %v, got %v", testAnnotations["app"], result["app"])
+	}
+}
+
+func TestServicePasswordKey(t *testing.T) {
+	valkey := &hyperspikeiov1.Valkey{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-resource",
+			Namespace: "default",
+		},
+	}
+	result := getServicePasswordKey(valkey)
+	if result != "password" {
+		t.Errorf("Expected %v, got %v", "test-resource", result)
+	}
+	valkey.Spec.ServicePassword = &corev1.SecretKeySelector{
+		Key: "test-password",
+	}
+	result = getServicePasswordKey(valkey)
+	if result != "test-password" {
+		t.Errorf("Expected %v, got %v", "test-password", result)
+	}
+}
+
+func TestServicePasswordName(t *testing.T) {
+	valkey := &hyperspikeiov1.Valkey{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-resource",
+			Namespace: "default",
+		},
+	}
+	result := getServicePasswordName(valkey)
+	if result != "test-resource" {
+		t.Errorf("Expected %v, got %v", "test-resource", result)
+	}
+	valkey.Spec.ServicePassword = &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{
+			Name: "test-password",
+		},
+	}
+	result = getServicePasswordName(valkey)
+	if result != "test-password" {
+		t.Errorf("Expected %v, got %v", "test-password", result)
 	}
 }

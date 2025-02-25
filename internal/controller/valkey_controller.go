@@ -253,6 +253,10 @@ func copyMap(m map[string]string) map[string]string {
 	return n
 }
 
+func annotations(valkey *hyperv1.Valkey) map[string]string {
+	return valkey.Annotations
+}
+
 func (r *ValkeyReconciler) getCACertificate(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -504,6 +508,10 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 
 func (r *ValkeyReconciler) GetPassword(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
 	logger := log.FromContext(ctx)
+
+	if valkey.Spec.ServicePassword != nil {
+		return r.getServicePassword(ctx, valkey)
+	}
 
 	secret := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, secret); err != nil {
@@ -1539,22 +1547,36 @@ func (r *ValkeyReconciler) upsertCertificateShard(ctx context.Context, valkey *h
 	return nil
 }
 
+func getServicePasswordKey(valkey *hyperv1.Valkey) string {
+	if valkey.Spec.ServicePassword == nil {
+		return "password"
+	}
+	return valkey.Spec.ServicePassword.Key
+}
+
+func getServicePasswordName(valkey *hyperv1.Valkey) string {
+	if valkey.Spec.ServicePassword == nil {
+		return valkey.Name
+	}
+	return valkey.Spec.ServicePassword.Name
+}
+
 func (r *ValkeyReconciler) getServicePassword(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {
 	logger := log.FromContext(ctx)
 
 	secret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Spec.ServicePassword.Name}, secret)
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: getServicePasswordName(valkey)}, secret)
 	if err != nil {
-		logger.Error(err, "failed to fetch secret", "name", valkey.Spec.ServicePassword.Name)
+		logger.Error(err, "failed to fetch secret", "name", getServicePasswordName(valkey))
 		return "", err
 	}
 	if secret.Data == nil {
-		return "", fmt.Errorf("secret %s/%s is empty", valkey.Namespace, valkey.Spec.ServicePassword.Name)
+		return "", fmt.Errorf("secret %s/%s is empty", valkey.Namespace, getServicePasswordName(valkey))
 	}
-	if secret.Data[valkey.Spec.ServicePassword.Key] == nil {
-		return "", fmt.Errorf("key %s is empty in secret %s/%s", valkey.Spec.ServicePassword.Key, valkey.Namespace, valkey.Spec.ServicePassword.Name)
+	if secret.Data[getServicePasswordKey(valkey)] == nil {
+		return "", fmt.Errorf("key %s is empty in secret %s/%s", getServicePasswordKey(valkey), valkey.Namespace, getServicePasswordName(valkey))
 	}
-	return string(secret.Data[valkey.Spec.ServicePassword.Key]), nil
+	return string(secret.Data[getServicePasswordKey(valkey)]), nil
 }
 
 func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Valkey, once bool) (string, error) {
@@ -2038,9 +2060,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Name: "VALKEY_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: getServicePasswordKey(valkey),
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: getServicePasswordName(valkey),
 					},
 				},
 			},
@@ -2049,9 +2071,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Name: "REDIS_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: getServicePasswordKey(valkey),
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: getServicePasswordName(valkey),
 					},
 				},
 			},
@@ -2230,7 +2252,8 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: l,
+					Labels:      l,
+					Annotations: annotations(valkey),
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: valkey.Name,
@@ -2258,6 +2281,8 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 							},
 						},
 					},
+					Tolerations:  valkey.Spec.Tolerations,
+					NodeSelector: valkey.Spec.NodeSelector,
 					Containers: []corev1.Container{
 						{
 							Image: image,
@@ -2478,9 +2503,9 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 			Name: "REDISCLI_AUTH",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: getServicePasswordKey(valkey),
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: getServicePasswordName(valkey),
 					},
 				},
 			},
@@ -2489,9 +2514,9 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 			Name: "VALKEY_PASSWORD",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
+					Key: getServicePasswordKey(valkey),
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: valkey.Name,
+						Name: getServicePasswordName(valkey),
 					},
 				},
 			},

@@ -52,43 +52,65 @@ type ValkeySpec struct {
 
 	// Turn on an init container to set permissions on the persistent volume
 	// +kubebuilder:default:=false
-	VolumePermissions bool `json:"volumePermissions,omitempty"`
+	VolumePermissions bool `json:"volumePermissions"`
 
 	// TLS Support
 	// +kubebuilder:default:=false
+	// +optional
 	TLS bool `json:"tls,omitempty"`
 	// Certificate Issuer
+	// +optional
 	CertIssuer string `json:"certIssuer,omitempty"`
 	// Certificate Issuer Type
 	// +kubebuilder:default:="ClusterIssuer"
 	// +kubebuilder:validation:Enum=ClusterIssuer;Issuer
+	// +optional
 	CertIssuerType string `json:"certIssuerType,omitempty"`
 
 	// Enable prometheus
 	// +kubebuilder:default:=false
-	Prometheus bool `json:"prometheus,omitempty"`
+	Prometheus bool `json:"prometheus"`
 	// Extra prometheus labels for operator targeting
+	// +optional
 	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
 
 	// Cluster Domain - used for DNS
 	// +kubebuilder:default:=cluster.local
-	ClusterDomain string `json:"clusterDomain,omitempty"`
+	ClusterDomain string `json:"clusterDomain"`
 
 	// Persistent volume claim
+	// +optional
 	Storage *corev1.PersistentVolumeClaim `json:"storage,omitempty"`
 
 	// Resources requirements and limits for the Valkey Server container
+	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// External access configuration
+	// +optional
 	ExternalAccess *ExternalAccessSpec `json:"externalAccess,omitempty"`
 
 	// Anonymous Auth
 	// +kubebuilder:default:=false
-	AnonymousAuth bool `json:"anonymousAuth,omitempty"`
+	AnonymousAuth bool `json:"anonymousAuth"`
 
 	// Service Password
+	// +optional
 	ServicePassword *corev1.SecretKeySelector `json:"servicePassword,omitempty"`
+
+	// Tolerations
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Node Selector
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Which endpoint is shown as the preferred endpoint valid values are 'ip', 'hostname', or 'unknown-endpoint'.
+	// +kubebuilder:default:="ip"
+	// +kubebuilder:validation:Enum=ip;hostname;unknown-endpoint
+	// +optional
+	ClusterPreferredEndpointType string `json:"clusterPreferredEndpointType,omitempty"`
 }
 
 // AutoScaleSpec defines the autoscale configuration
@@ -134,31 +156,35 @@ type AutoScaleSpec struct {
 type ExternalAccessSpec struct {
 	// Enable external access
 	// +kubebuilder:default:=false
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled bool `json:"enabled"`
 
 	// External access type
 	// LoadBalancer or Proxy, the LoadBalancer type will create a LoadBalancer service for each Valkey Shard (master node)
 	// The Proxy type will create a single LoadBalancer service and use an envoy proxy to route traffic to the Valkey Shards
 	// +kubebuilder:default:=Proxy
 	// +kubebuilder:validation:Enum=LoadBalancer;Proxy
-	Type string `json:"type,omitempty"`
+	Type string `json:"type"`
 
 	// Proxy Settings
+	// +optional
 	Proxy *ProxySettings `json:"proxy,omitempty"`
 
 	// LoadBalancer Settings
 	LoadBalancer *LoadBalancerSettings `json:"loadBalancer,omitempty"`
 
 	// Cert Issuer for external access TLS certificate
+	// +optional
 	CertIssuer string `json:"certIssuer,omitempty"`
 
 	// Cert Issuer Type for external access TLS certificate
 	// +kubebuilder:default:="ClusterIssuer"
 	// +kubebuilder:validation:Enum=ClusterIssuer;Issuer
+	// +optional
 	CertIssuerType string `json:"certIssuerType,omitempty"`
 
 	// Support External DNS
 	// +kubebuilder:default:=false
+	// +optional
 	ExternalDNS bool `json:"externalDNS,omitempty"`
 }
 
@@ -166,27 +192,33 @@ type ExternalAccessSpec struct {
 type ProxySettings struct {
 	// Image to use for the proxy
 	// +kubebuilder:default:="envoyproxy/envoy:v1.32.1"
+	// +optional
 	Image string `json:"image,omitempty"`
 	// Resources requirements and limits for the proxy container
+	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// Extra Envoy configuration
+	// +optional
 	ExtraConfig string `json:"extraConfig,omitempty"`
 
 	// Annotations for the proxy service
+	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 
 	// Replicas for the proxy
 	// +kubebuilder:default:=1
-	Replicas *int32 `json:"replicas,omitempty"`
+	Replicas *int32 `json:"replicas"`
 
 	// External Hostname for the proxy
+	// +optional
 	Hostname string `json:"hostname,omitempty"`
 }
 
 // LoadBalancerSettings defines the load balancer settings
 type LoadBalancerSettings struct {
 	// Annotations for the load balancer service
+	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 

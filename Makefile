@@ -19,6 +19,8 @@ VERSION ?= $(shell  if [ ! -z $$(git tag --points-at HEAD) ] ; then git tag --po
 DATE ?= $(shell date -u  +'%Y%m%d')
 SHA ?= $(shell git rev-parse --short HEAD)
 PKG ?= hyperspike.io/valkey-operator
+GOOS ?= linux
+GOARCH ?= amd64
 
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
@@ -107,7 +109,7 @@ gosec: gosec-bin ## Run gosec scanner
 ##@ Build
 
 manager: manifests generate fmt vet ## Build manager binary.
-	$QCGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(VV) \
+	$QCGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(VV) \
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
@@ -117,7 +119,7 @@ manager: manifests generate fmt vet ## Build manager binary.
 		-o $@ ./cmd/manager/
 
 sidecar: manifests generate fmt vet ## Build sidecar binary.
-	$QCGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(VV) \
+	$QCGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(VV) \
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
@@ -313,7 +315,7 @@ define go-install-tool
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
-GOBIN=$(LOCALBIN) go install $${package} ;\
+GOOS=linux GOARCH=amd64 GOBIN=$(LOCALBIN) go install $${package} ;\
 mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
 }
 endef
