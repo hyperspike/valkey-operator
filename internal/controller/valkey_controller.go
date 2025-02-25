@@ -549,6 +549,23 @@ type topology struct {
 	podIP   string
 }
 
+func (r *ValkeyReconciler) getPodIPByShard(ctx context.Context, valkey *hyperv1.Valkey, shard int) ([]string, error) {
+	logger := log.FromContext(ctx)
+
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+		logger.Error(err, "failed to list pods")
+		return nil, err
+	}
+	ips := []string{}
+	for _, pod := range pods.Items {
+		if pod.Labels["hyperspike.io/shard"] == fmt.Sprintf("%d", shard) {
+			ips = append(ips, pod.Status.PodIP)
+		}
+	}
+	return ips, nil
+}
+
 func (r *ValkeyReconciler) buildTopology(ctx context.Context, valkey *hyperv1.Valkey) ([]topology, error) {
 	logger := log.FromContext(ctx)
 
@@ -564,19 +581,18 @@ func (r *ValkeyReconciler) buildTopology(ctx context.Context, valkey *hyperv1.Va
 		return nil, err
 	}
 
-	podIPs, err := r.getPodIPs(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get pod ips")
-		return nil, err
-	}
-
 	topo := []topology{}
 	for i, podName := range podNames {
+		ips, err := r.getPodIPByShard(ctx, valkey, i)
+		if err != nil {
+			logger.Error(err, "failed to get pod ips")
+			return nil, err
+		}
 		topo = append(topo, topology{
 			shardId: i,
 			host:    podName,
 			svcIP:   svcIPs[podName],
-			podIP:   podIPs[podName],
+			podIP:   ips[0],
 		})
 	}
 	return topo, nil
@@ -2212,7 +2228,10 @@ func getExporterResourceRequirements() corev1.ResourceRequirements {
 	}
 }
 
-func getInitContainerResourceRequirements() corev1.ResourceRequirements {
+/*
+ * set internal resource requirements for init container
+ */
+func getInitContainerResourceRequirements() corev1.ResourceRequirements { // {{{
 	return corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -2224,6 +2243,8 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 		},
 	}
 }
+
+// }}}
 
 /*
  * Create a new Deployment for a Valkey Shard (Node)
