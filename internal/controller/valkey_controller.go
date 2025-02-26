@@ -72,8 +72,13 @@ func init() {
 	}
 }
 
-func randString(n int) (string, error) {
-	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+func randString(n int, lowerCase bool) (string, error) {
+	const upper = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+	const lower = "0123456789abcdefghijklmnopqrstuvwxyz-"
+	letters := upper
+	if lowerCase {
+		letters = lower
+	}
 	ret := make([]byte, n)
 	for i := 0; i < n; i++ {
 		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
@@ -205,11 +210,19 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if err := r.upsertPVCShard(ctx, valkey, i); err != nil {
 			return ctrl.Result{}, err
 		}
-		if err := r.upsertDeploymentShard(ctx, valkey, i, false); err != nil {
+		id, err := randString(5, true)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if err := r.upsertDeploymentShard(ctx, valkey, i, id, false); err != nil {
 			return ctrl.Result{}, err
 		}
 		for rep := 0; rep < int(valkey.Spec.Replicas); rep++ {
-			if err := r.upsertDeploymentShard(ctx, valkey, i, true); err != nil {
+			id, err = randString(5, true)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			if err := r.upsertDeploymentShard(ctx, valkey, i, id, true); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -1603,7 +1616,7 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 	}
 
 	logger.Info("upserting secret")
-	rs, err := randString(16)
+	rs, err := randString(16, false)
 	if err != nil {
 		return "", err
 	}
@@ -1685,7 +1698,8 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 
 	// connect to the first node!
 	opt := valkeyClient.ClientOption{
-		InitAddress: []string{valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc:6379"},
+		ForceSingleClient: true,
+		InitAddress:       []string{valkey.Name + "." + valkey.Namespace + ".svc:6379"},
 	}
 	if !valkey.Spec.AnonymousAuth {
 		var err error
@@ -2247,12 +2261,13 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements { // {{{
 // }}}
 
 /*
- * Create a new Deployment for a Valkey Shard (Node)
+ * Create a new Deployment for a Valkey Shard (Node) and return the random name ID
  */
-func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hyperv1.Valkey, shardId int, replica bool) error { // {{{
+func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hyperv1.Valkey, shardId int, id string, replica bool) error { // {{{
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting Deployment")
+	name := fmt.Sprintf("%s-%s-%d", valkey.Name, id, shardId)
+	logger.Info("upserting Deployment", "name", name)
 
 	image := r.GlobalConfig.ValkeyImage
 	if valkey.Spec.Image != "" {
@@ -2260,9 +2275,14 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 	}
 	l := labels(valkey)
 	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
+	if replica {
+		l["hyperspike.io/leader"] = "false"
+	} else {
+		l["hyperspike.io/leader"] = "true"
+	}
 	sts := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%d", valkey.Name, shardId),
+			Name:      name,
 			Namespace: valkey.Namespace,
 			Labels:    l,
 		},
@@ -2561,44 +2581,70 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 		return err
 	}
 
-	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: fmt.Sprintf("%s-%d", valkey.Name, shardId)}, sts)
-	if err != nil && errors.IsNotFound(err) {
+	deps, err := r.getDeployments(ctx, valkey, shardId, replica)
+	if len(deps) == 0 || (err != nil && errors.IsNotFound(err)) {
+		logger.Info("creating deployment", "name", sts.Name)
 		if err := r.Create(ctx, sts); err != nil {
-			logger.Error(err, "failed to update deployment")
+			logger.Error(err, "failed to create deployment", "name", sts.Name)
 			return err
 		}
 		r.Recorder.Event(valkey, "Normal", "Created",
-			fmt.Sprintf("Deployment %s/%s is created", valkey.Namespace, valkey.Name))
+			fmt.Sprintf("Deployment %s/%s is created", valkey.Namespace, sts.Name))
 	} else if err != nil {
 		logger.Error(err, "failed fetching deployment")
 		return err
 	}
 
-	if valkey.Spec.Prometheus && len(sts.Spec.Template.Spec.Containers) == 1 {
-		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
-		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update deployment")
-			return err
+	/*
+		if valkey.Spec.Prometheus && len(sts.Spec.Template.Spec.Containers) == 1 {
+			sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
+			if err := r.Update(ctx, sts); err != nil {
+				logger.Error(err, "failed to update deployment")
+				return err
+			}
+			r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (exporter)", valkey.Namespace, valkey.Name))
 		}
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (exporter)", valkey.Namespace, valkey.Name))
-	}
-	sidecarImage := r.GlobalConfig.SidecarImage
-	if valkey.Spec.SidecarImage != "" {
-		sidecarImage = valkey.Spec.SidecarImage
-	}
-	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != sidecarImage {
-		sts.Spec.Template.Spec.Containers[1].Image = sidecarImage
-		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update deployment exporter image")
-			return err
+		sidecarImage := r.GlobalConfig.SidecarImage
+		if valkey.Spec.SidecarImage != "" {
+			sidecarImage = valkey.Spec.SidecarImage
 		}
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (exporter image)", valkey.Namespace, valkey.Name))
-	}
+		if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != sidecarImage {
+			sts.Spec.Template.Spec.Containers[1].Image = sidecarImage
+			if err := r.Update(ctx, sts); err != nil {
+				logger.Error(err, "failed to update deployment exporter image")
+				return err
+			}
+			r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("Deployment %s/%s is updated (exporter image)", valkey.Namespace, valkey.Name))
+		}
+	*/
 
 	return nil
 }
 
 // }}}
+
+func (r *ValkeyReconciler) getDeployments(ctx context.Context, valkey *hyperv1.Valkey, shardId int, replica bool) ([]appsv1.Deployment, error) {
+	logger := log.FromContext(ctx)
+
+	deployments := &appsv1.DeploymentList{}
+	l := labels(valkey)
+	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
+	if replica {
+		l["hyperspike.io/leader"] = "false"
+	} else {
+		l["hyperspike.io/leader"] = "true"
+	}
+	if err := r.List(ctx, deployments, client.InNamespace(valkey.Namespace), client.MatchingLabels(l)); err != nil {
+		logger.Error(err, "failed to get deployment")
+		return nil, err
+	}
+	ret := []appsv1.Deployment{}
+	for _, deployment := range deployments.Items {
+		ret = append(ret, deployment)
+	}
+	logger.Info("found deployments", "count", len(ret))
+	return ret, nil
+}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ValkeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
