@@ -207,13 +207,14 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				return ctrl.Result{}, err
 			}
 		}
-		if err := r.upsertPVCShard(ctx, valkey, i); err != nil {
-			return ctrl.Result{}, err
-		}
 		id, err := randString(5, true)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		/*
+			if err := r.upsertPVCShard(ctx, valkey, i, id); err != nil {
+				return ctrl.Result{}, err
+			}*/
 		if err := r.upsertDeploymentShard(ctx, valkey, i, id, false); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -222,6 +223,10 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			if err != nil {
 				return ctrl.Result{}, err
 			}
+			/*
+				if err := r.upsertPVCShard(ctx, valkey, i, id); err != nil {
+					return ctrl.Result{}, err
+				}*/
 			if err := r.upsertDeploymentShard(ctx, valkey, i, id, true); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -560,13 +565,19 @@ type topology struct {
 	host    string
 	svcIP   string
 	podIP   string
+	replica bool
 }
 
-func (r *ValkeyReconciler) getPodIPByShard(ctx context.Context, valkey *hyperv1.Valkey, shard int) ([]string, error) {
+func (r *ValkeyReconciler) getPodIPByShard(ctx context.Context, valkey *hyperv1.Valkey, shard int, replica bool) ([]string, error) {
 	logger := log.FromContext(ctx)
 
 	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+	l := labels(valkey)
+	l["hyperspike.io/leader"] = "true"
+	if replica {
+		l["hyperspike.io/leader"] = "false"
+	}
+	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(l)); err != nil {
 		logger.Error(err, "failed to list pods")
 		return nil, err
 	}
@@ -574,6 +585,23 @@ func (r *ValkeyReconciler) getPodIPByShard(ctx context.Context, valkey *hyperv1.
 	for _, pod := range pods.Items {
 		if pod.Labels["hyperspike.io/shard"] == fmt.Sprintf("%d", shard) {
 			ips = append(ips, pod.Status.PodIP)
+		}
+	}
+	return ips, nil
+}
+
+func (r *ValkeyReconciler) getSvcIPs(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
+	logger := log.FromContext(ctx)
+
+	svcs := &corev1.ServiceList{}
+	if err := r.List(ctx, svcs, client.InNamespace(valkey.Namespace)); err != nil {
+		logger.Error(err, "failed to list services")
+		return nil, err
+	}
+	ips := map[string]string{}
+	for _, svc := range svcs.Items {
+		if svc.Labels["app.kubernetes.io/component"] == Valkey && svc.Labels["app.kubernetes.io/instance"] == valkey.Name {
+			ips[svc.Name] = svc.Spec.ClusterIP
 		}
 	}
 	return ips, nil
@@ -596,7 +624,7 @@ func (r *ValkeyReconciler) buildTopology(ctx context.Context, valkey *hyperv1.Va
 
 	topo := []topology{}
 	for i, podName := range podNames {
-		ips, err := r.getPodIPByShard(ctx, valkey, i)
+		ips, err := r.getPodIPByShard(ctx, valkey, i, false)
 		if err != nil {
 			logger.Error(err, "failed to get pod ips")
 			return nil, err
@@ -609,23 +637,6 @@ func (r *ValkeyReconciler) buildTopology(ctx context.Context, valkey *hyperv1.Va
 		})
 	}
 	return topo, nil
-}
-
-func (r *ValkeyReconciler) getSvcIPs(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
-	logger := log.FromContext(ctx)
-
-	svcs := &corev1.ServiceList{}
-	if err := r.List(ctx, svcs, client.InNamespace(valkey.Namespace)); err != nil {
-		logger.Error(err, "failed to list services")
-		return nil, err
-	}
-	ips := map[string]string{}
-	for _, svc := range svcs.Items {
-		if svc.Labels["app.kubernetes.io/component"] == Valkey && svc.Labels["app.kubernetes.io/instance"] == valkey.Name {
-			ips[svc.Name] = svc.Spec.ClusterIP
-		}
-	}
-	return ips, nil
 }
 
 func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
@@ -2139,14 +2150,14 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 	return container
 }
 
-func (r *ValkeyReconciler) upsertPVCShard(ctx context.Context, valkey *hyperv1.Valkey, shard int) error {
+func (r *ValkeyReconciler) upsertPVCShard(ctx context.Context, valkey *hyperv1.Valkey, shard int, id string) error {
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting pvc")
 
 	pv := corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("valkey-data-%d", shard),
+			Name:      fmt.Sprintf("valkey-data-%d-%s", shard, id),
 			Namespace: valkey.Namespace,
 			Labels:    labels(valkey),
 		},
@@ -2165,7 +2176,7 @@ func (r *ValkeyReconciler) upsertPVCShard(ctx context.Context, valkey *hyperv1.V
 	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shard)
 	if valkey.Spec.Storage != nil {
 		pv = *valkey.Spec.Storage
-		pv.ObjectMeta.Name = fmt.Sprintf("valkey-data-%d", shard)
+		pv.ObjectMeta.Name = fmt.Sprintf("valkey-data-%d-%s", shard, id)
 		pv.ObjectMeta.Namespace = valkey.Namespace
 		if pv.ObjectMeta.Labels == nil {
 			pv.ObjectMeta.Labels = l
@@ -2463,7 +2474,7 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 							Name: "valkey-data",
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: fmt.Sprintf("valkey-data-%d", shardId),
+									ClaimName: fmt.Sprintf("valkey-data-%d-%s", shardId, id),
 								},
 							},
 						},
@@ -2582,7 +2593,10 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 	}
 
 	deps, err := r.getDeployments(ctx, valkey, shardId, replica)
-	if len(deps) == 0 || (err != nil && errors.IsNotFound(err)) {
+	if len(deps) == 0 || (replica && len(deps) < int(valkey.Spec.Replicas)) || (err != nil && errors.IsNotFound(err)) {
+		if err := r.upsertPVCShard(ctx, valkey, shardId, id); err != nil {
+			return err
+		}
 		logger.Info("creating deployment", "name", sts.Name)
 		if err := r.Create(ctx, sts); err != nil {
 			logger.Error(err, "failed to create deployment", "name", sts.Name)
