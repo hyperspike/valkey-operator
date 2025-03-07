@@ -79,8 +79,8 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
-github.com/oliver006/redis_exporter v1.67.0 h1:DIWpIYOQ+T7vYKxL1jbmtqlJYxBzpaFhjbqGvWuCMXo=
-github.com/oliver006/redis_exporter v1.67.0/go.mod h1:xBNCR/4yiaRFT1iI/zS4Kq+AgPk/3f4qDxw4RtzzuzA=
+github.com/oliver006/redis_exporter v1.68.0 h1:+rb1qfMGGQUZPPxG1+i4saZbMuoqmeh3WdSufD2mqV0=
+github.com/oliver006/redis_exporter v1.68.0/go.mod h1:iqb0O1NTWznYAK66uCZeNGaFi5zGfpnAa6ndQQimLrE=
 github.com/onsi/ginkgo/v2 v2.22.2 h1:/3X8Panh8/WwhU/3Ssa6rCKqPLuAkVY2I0RoyDLySlU=
 github.com/onsi/ginkgo/v2 v2.22.2/go.mod h1:oeMosUL+8LtarXBHu/c0bx2D/K9zyQ6uX3cTyztHwsk=
 github.com/onsi/gomega v1.36.2 h1:koNYke6TVk6ZmnyHrCXba/T/MoLBXFjeC1PtvYgw0A8=
