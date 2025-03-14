@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: localhost:5000/valkey-operator
-  newTag: "19"
+  newTag: "26"

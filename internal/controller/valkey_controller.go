@@ -253,6 +253,9 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				if err := r.deleteService(ctx, valkey, deps[rep-1].Name); err != nil {
 					return ctrl.Result{}, err
 				}
+				if err := r.removeNode(ctx, valkey, deps[rep-1].Name); err != nil {
+					return ctrl.Result{}, err
+				}
 			}
 		} else if len(deps) < int(valkey.Spec.Replicas) {
 			for rep := len(deps); rep < int(valkey.Spec.Replicas); rep++ {
@@ -2182,6 +2185,22 @@ func (r *ValkeyReconciler) detectClusterDomain(ctx context.Context, valkey *hype
 	return clusterDomain, nil
 }
 
+func (r *ValkeyReconciler) getPodIp(ctx context.Context, valkey *hyperv1.Valkey, name string) (string, error) {
+	logger := log.FromContext(ctx)
+
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+		logger.Error(err, "failed fetching pod")
+		return "", err
+	}
+	for _, pod := range pods.Items {
+		if strings.Contains(pod.Name, name) {
+			return pod.Status.PodIP, nil
+		}
+	}
+	return "", fmt.Errorf("pod %s not found", name)
+}
+
 /*
 func (r *ValkeyReconciler) getPodIp(ctx context.Context, name, namespace string) (string, error) {
 	logger := log.FromContext(ctx)
@@ -3006,6 +3025,75 @@ func (r *ValkeyReconciler) replicateShard(ctx context.Context, valkey *hyperv1.V
 		return err
 	}
 
+	return nil
+}
+
+func (r *ValkeyReconciler) removeNode(ctx context.Context, valkey *hyperv1.Valkey, name string) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("removing node", "id", name)
+
+	opt := valkeyClient.ClientOption{
+		InitAddress:       []string{valkey.Name + "-0." + valkey.Namespace + ".svc" + ":6379"},
+		ForceSingleClient: true,
+	}
+	if !valkey.Spec.AnonymousAuth {
+		var err error
+		opt.Password, err = r.GetPassword(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get password")
+			return err
+		}
+	}
+	if valkey.Spec.TLS {
+		ca, err := r.getCACertificate(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get ca certificate")
+			return err
+		}
+		if ca == "" {
+			return fmt.Errorf("ca certificate not ready")
+		}
+		certpool, err := x509.SystemCertPool()
+		if err != nil {
+			logger.Error(err, "failed to get system cert pool")
+			return err
+		}
+		certpool.AppendCertsFromPEM([]byte(ca))
+		opt.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    certpool,
+		}
+	}
+	vClient, err := valkeyClient.NewClient(opt)
+	if err != nil {
+		logger.Error(err, "failed to create valkey client")
+		return err
+	}
+	defer vClient.Close()
+
+	nodes, err := vClient.Do(ctx, vClient.B().ClusterNodes().Build()).ToString()
+	if err != nil {
+		logger.Error(err, "failed to get cluster nodes")
+		return err
+	}
+
+	ip, err := r.getPodIp(ctx, valkey, name)
+	if err != nil {
+		logger.Error(err, "failed to get pod ip")
+		return err
+	}
+	for _, line := range strings.Split(nodes, "\n") {
+		if strings.Contains(line, ip) {
+			split := strings.Split(line, " ")[0]
+			node := strings.ReplaceAll(split, "txt:", "")
+			if err := vClient.Do(ctx, vClient.B().ClusterForget().NodeId(node).Build()).Error(); err != nil {
+				logger.Error(err, "failed to forget node", "node", node)
+				return err
+			}
+			return nil
+		}
+	}
 	return nil
 }
 
