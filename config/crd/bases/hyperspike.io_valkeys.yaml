@@ -23,8 +23,8 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    - jsonPath: .spec.nodes
-      name: Nodes
+    - jsonPath: .spec.shards
+      name: Shards
       type: integer
     - jsonPath: .spec.replicas
       name: Replicas

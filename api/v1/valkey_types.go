@@ -236,7 +236,7 @@ type ValkeyStatus struct {
 // Valkey is the Schema for the valkeys API
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=`.status.ready`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:printcolumn:name="Nodes",type="integer",JSONPath=".spec.nodes"
+// +kubebuilder:printcolumn:name="Shards",type="integer",JSONPath=".spec.shards"
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
 // +kubebuilder:printcolumn:name="Volumme Permissions",type="boolean",priority=1,JSONPath=".spec.volumePermissions"
 // +kubebuilder:printcolumn:name="Image",type="string",priority=1,JSONPath=".spec.image"
