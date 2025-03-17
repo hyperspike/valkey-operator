@@ -227,10 +227,12 @@ type ValkeyStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 	Ready      bool               `json:"ready"`
+	Shards     int32              `json:"shards"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:subresource:scale:specpath=.spec.shards,statuspath=.status.shards
 // +kubebuilder:resource:shortName=vk
 
 // Valkey is the Schema for the valkeys API
