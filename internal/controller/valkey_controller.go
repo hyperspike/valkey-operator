@@ -1731,6 +1731,10 @@ func (r *ValkeyReconciler) detectClusterDomain(ctx context.Context, valkey *hype
 	logger := log.FromContext(ctx)
 
 	logger.Info("detecting cluster domain")
+	if valkey.Spec.ClusterDomain != "" {
+		return valkey.Spec.ClusterDomain, nil
+	}
+
 	clusterDomain := os.Getenv("CLUSTER_DOMAIN")
 	if clusterDomain == "" {
 		clusterDomain = "cluster.local"
