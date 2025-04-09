@@ -33,11 +33,18 @@ import (
 	"text/template"
 	"time"
 
-	valkeyClient "github.com/valkey-io/valkey-go"
-
+	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	cmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/google/go-cmp/cmp"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	valkeyClient "github.com/valkey-io/valkey-go"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -47,16 +54,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	cmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	hyperv1 "hyperspike.io/valkey-operator/api/v1"
 	globalcfg "hyperspike.io/valkey-operator/cfg"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1"
-	storagev1 "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
