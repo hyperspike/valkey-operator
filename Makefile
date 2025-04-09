@@ -19,6 +19,8 @@ VERSION ?= $(shell  if [ ! -z $$(git tag --points-at HEAD) ] ; then git tag --po
 DATE ?= $(shell date -u  +'%Y%m%d')
 SHA ?= $(shell git rev-parse --short HEAD)
 PKG ?= hyperspike.io/valkey-operator
+GOOS ?= linux
+GOARCH ?= amd64
 
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
@@ -31,7 +33,7 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-K8S_VERSION ?= 1.32.1
+K8S_VERSION ?= 1.32.2
 ENVTEST_K8S_VERSION = $(K8S_VERSION)
 CILIUM_VERSION ?= 1.16.5
 VALKEY_VERSION ?= 8.0.2
@@ -107,7 +109,7 @@ gosec: gosec-bin ## Run gosec scanner
 ##@ Build
 
 manager: manifests generate fmt vet ## Build manager binary.
-	$QCGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(VV) \
+	$QCGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(VV) \
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
@@ -117,7 +119,7 @@ manager: manifests generate fmt vet ## Build manager binary.
 		-o $@ ./cmd/manager/
 
 sidecar: manifests generate fmt vet ## Build sidecar binary.
-	$QCGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(VV) \
+	$QCGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(VV) \
 		-trimpath \
 		-gcflags all="-N -l -trimpath=/src -trimpath=$(PWD)" \
 		-asmflags all="-trimpath=/src -trimpath=$(PWD)" \
@@ -246,7 +248,7 @@ ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.61.0
 HELMIFY_VERSION ?= v0.4.14
 HELM_VERSION ?= v3.15.4
-GOSEC_VERSION ?= v2.20.0
+GOSEC_VERSION ?= v2.22.1
 
 helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize manifests
 	$Qcd config/manager && $(KUSTOMIZE) edit set image controller=${IMG_CONTROLLER}
@@ -313,7 +315,7 @@ define go-install-tool
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
-GOBIN=$(LOCALBIN) go install $${package} ;\
+GOOS=linux GOARCH=amd64 GOBIN=$(LOCALBIN) go install $${package} ;\
 mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
 }
 endef

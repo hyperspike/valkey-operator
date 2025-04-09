@@ -19,6 +19,12 @@ env:
 jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
     permissions:
       contents: read # for trivy scan upload
       packages: write
@@ -27,8 +33,17 @@ jobs:
       attestations: write
 
     steps:
+    - name: Prepare
+      run: |
+        platform=${{ matrix.platform }}
+        echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
     - name: Log in to the Container registry
       uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
@@ -46,12 +61,12 @@ jobs:
       id: meta_sidecar
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
-        images: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}
+        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar:${{ env.RELEASE_VERSION }}
     - name: Extract metadata (Valkey tags, labels) for Docker
       id: meta_valkey
       uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96
       with:
-        images: ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}
+        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ env.VALKEY_VERSION }}
 
     - name: Setup Go ${{ matrix.go-version }}
       uses: actions/setup-go@v5
@@ -62,51 +77,53 @@ jobs:
       run: go version
     - name: Build it
       id: go_build
-      run: make V=1
-
+      run: |
+        platform=${{ matrix.platform }}
+        echo "Building for $GOOS/$GOARCH"
+        make V=1 GOOS=${platform%/*} GOARCH=${platform#*/}
     - name: Build and push Docker image
-      uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991
       id: docker_build_controller
+      uses: docker/build-push-action@v6
       with:
         file: Dockerfile.controller
         context: .
-        push: true
         visibility: public
-        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
+        platforms: ${{ matrix.platform }}
         labels: ${{ steps.meta_manager.outputs.labels }}
+        outputs: type=image,"name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}",push-by-digest=true,name-canonical=true,push=true
     - name: Build and push Sidecar image
       uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991
       id: docker_build_sidecar
       with:
         file: Dockerfile.sidecar
         context: .
-        push: true
         visibility: public
-        tags: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}
+        platforms: ${{ matrix.platform }}
         labels: ${{ steps.meta_sidecar.outputs.labels }}
+        outputs: type=image,"name=${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar",push-by-digest=true,name-canonical=true,push=true
     - name: Build and push Valkey image
       uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991
       id: docker_build_valkey
       with:
         file: Dockerfile.valkey
         context: .
-        push: true
         visibility: public
-        tags: ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}
+        platforms: ${{ matrix.platform }}
         labels: ${{ steps.meta_valkey.outputs.labels }}
+        outputs: type=image,"name=${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey",push-by-digest=true,name-canonical=true,push=true
 
     - name: Set up Cosign
-      uses: sigstore/cosign-installer@c56c2d3e59e4281cc41dea2217323ba5694b171e # v3.8.0
+      uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
 
     - name: Sign Controller image with GitHub OIDC Token
       run: |
         cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}@${{ steps.docker_build_controller.outputs.digest }}
     - name: Sign Sidecar image with GitHub OIDC Token
       run: |
-        cosign sign --yes ${{ env.REGISTRY }}/hyperspike/valkey-sidecar:${{ env.RELEASE_VERSION }}@${{ steps.docker_build_sidecar.outputs.digest }}
+        cosign sign --yes ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar:${{ env.RELEASE_VERSION }}@${{ steps.docker_build_sidecar.outputs.digest }}
     - name: Sign Valkey image with GitHub OIDC Token
       run: |
-        cosign sign --yes ${{ env.REGISTRY }}/hyperspike/valkey:${{ env.VALKEY_VERSION }}@${{ steps.docker_build_valkey.outputs.digest }}
+        cosign sign --yes ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ env.VALKEY_VERSION }}@${{ steps.docker_build_valkey.outputs.digest }}
 
     - name: Attest the Controller image
       uses: actions/attest-build-provenance@v2
@@ -119,28 +136,115 @@ jobs:
       uses: actions/attest-build-provenance@v2
       id: attest_sidecar
       with:
-        subject-name: ${{ env.REGISTRY }}/hyperspike/valkey-sidecar
+        subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar
         subject-digest: ${{ steps.docker_build_sidecar.outputs.digest }}
         push-to-registry: true
     - name: Attest the Valkey image
       uses: actions/attest-build-provenance@v2
       id: attest_valkey
       with:
-        subject-name: ${{ env.REGISTRY }}/hyperspike/valkey
+        subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey
         subject-digest: ${{ steps.docker_build_valkey.outputs.digest }}
         push-to-registry: true
-
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
+    - name: Export digest
+      run: |
+        mkdir -p ${{ runner.temp }}/digests/controller
+        mkdir -p ${{ runner.temp }}/digests/sidecar
+        mkdir -p ${{ runner.temp }}/digests/valkey
+        digest="${{ steps.docker_build_controller.outputs.digest }}"
+        touch "${{ runner.temp }}/digests/controller/${digest#sha256:}"
+        digest="${{ steps.docker_build_sidecar.outputs.digest }}"
+        touch "${{ runner.temp }}/digests/sidecar/${digest#sha256:}"
+        digest="${{ steps.docker_build_valkey.outputs.digest }}"
+        touch "${{ runner.temp }}/digests/valkey/${digest#sha256:}"
+    - name: Upload digest
+      uses: actions/upload-artifact@v4
       with:
-        image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+        name: digests-${{ env.PLATFORM_PAIR }}
+        path: ${{ runner.temp }}/digests/*
+        if-no-files-found: error
+        retention-days: 1
+  merge:
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-push-image
+    permissions:
+      contents: read # for trivy scan upload
+      packages: write
+      id-token: write
+      security-events: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
 
-    - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: 'trivy-results.sarif'
-      #env:
-      #  GITHUB_TOKEN: ${{ secrets.TOKEN }}
+      - name: Log in to the Container registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta_controller
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ env.RELEASE_VERSION }}
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          cd controller
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+      - name: Docker meta
+        id: meta_sidecar
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar
+          tags: ${{ env.RELEASE_VERSION }}
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          cd sidecar
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar@sha256:%s ' *)
+      - name: Docker meta
+        id: meta_valkey
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey
+          tags: ${{ env.VALKEY_VERSION }}
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          cd valkey
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta_controller.outputs.version }}
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar:${{ steps.meta_sidecar.outputs.version }}
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ steps.meta_valkey.outputs.version }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+        #env:
+        #  GITHUB_TOKEN: ${{ secrets.TOKEN }}

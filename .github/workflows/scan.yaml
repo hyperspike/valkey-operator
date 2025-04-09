@@ -89,11 +89,11 @@ jobs:
         file: Dockerfile.valkey
         context: .
         push: false
-        tags:  ${{ env.REGISTRY }}/hyperspike/valkey:${{ github.SHA }}
+        tags:  ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ github.SHA }}
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.REGISTRY }}/hyperspike/valkey:${{ github.SHA }}
+        image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ github.SHA }}
         format: 'sarif'
         output: 'trivy-results.sarif'
     - name: Upload Trivy scan results to GitHub Security tab
