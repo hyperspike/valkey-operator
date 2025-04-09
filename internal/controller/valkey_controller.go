@@ -35,7 +35,8 @@ import (
 
 	valkeyClient "github.com/valkey-io/valkey-go"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	"github.com/google/go-cmp/cmp"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -54,6 +55,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -127,6 +129,10 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	valkey := &hyperv1.Valkey{}
 	if err := r.Get(ctx, req.NamespacedName, valkey); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	err := r.validateValkeySpec(valkey)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	if err := r.upsertConfigMap(ctx, valkey); err != nil {
@@ -221,6 +227,31 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ValkeyReconciler) validateValkeySpec(valkey *hyperv1.Valkey) error {
+	if valkey.Spec.Shards < 1 {
+		valkey.Spec.Shards = int32(r.GlobalConfig.Nodes)
+		if valkey.Spec.Shards < 1 {
+			return fmt.Errorf("shards must be at least 1, got %d", valkey.Spec.Shards)
+		}
+	}
+
+	if valkey.Spec.Image == "" {
+		valkey.Spec.Image = r.GlobalConfig.ValkeyImage
+		if valkey.Spec.Image == "" {
+			return fmt.Errorf("valkey image must be specified")
+		}
+	}
+
+	if valkey.Spec.ExporterImage == "" {
+		valkey.Spec.ExporterImage = r.GlobalConfig.SidecarImage
+	}
+
+	if valkey.Labels == nil {
+		valkey.Labels = map[string]string{}
+	}
+	return nil
 }
 
 func labels(valkey *hyperv1.Valkey) map[string]string {
@@ -345,7 +376,7 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 		return err
 	}
 	if err := r.Create(ctx, svc); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
 				return err
 			}
@@ -419,7 +450,7 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 		return err
 	}
 	if err := r.Create(ctx, cm); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, cm); err != nil {
 				logger.Error(err, "failed to update ConfigMap")
 				return err
@@ -642,7 +673,7 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 		return err
 	}
 	if len(ips) == 0 {
-		return errors.NewBadRequest("external ip is empty")
+		return apierrors.NewBadRequest("external ip is empty")
 	}
 	password := ""
 	if !valkey.Spec.AnonymousAuth {
@@ -803,7 +834,7 @@ func (r *ValkeyReconciler) upsertExternalAccessLBSvc(ctx context.Context, valkey
 			return err
 		}
 		if err := r.Create(ctx, svc); err != nil {
-			if errors.IsAlreadyExists(err) {
+			if apierrors.IsAlreadyExists(err) {
 				if err := r.Update(ctx, svc); err != nil {
 					logger.Error(err, "failed to update external access svc")
 					return err
@@ -853,7 +884,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySvc(ctx context.Context, val
 		return err
 	}
 	if err := r.Create(ctx, svc); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
 				logger.Error(err, "failed to update external proxy svc")
 				return err
@@ -915,7 +946,7 @@ func (r *ValkeyReconciler) upsertProxyCertificate(ctx context.Context, valkey *h
 		return err
 	}
 	if err := r.Create(ctx, cert); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, cert); err != nil {
 				logger.Error(err, "failed to update proxy certificate")
 				return err
@@ -1055,7 +1086,7 @@ admin:
 		return err
 	}
 	if err := r.Create(ctx, secret); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, secret); err != nil {
 				logger.Error(err, "failed to update external proxy secret")
 				return err
@@ -1177,7 +1208,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxyDeployment(ctx context.Conte
 		return err
 	}
 	if err := r.Create(ctx, proxyDeployment); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, proxyDeployment); err != nil {
 				logger.Error(err, "failed to update external proxy deployment")
 				return err
@@ -1227,7 +1258,7 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 		return err
 	}
 	if err := r.Create(ctx, svc); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
 				logger.Error(err, "failed to update service")
 				return err
@@ -1276,7 +1307,7 @@ func (r *ValkeyReconciler) upsertMetricsService(ctx context.Context, valkey *hyp
 		return err
 	}
 	if err := r.Create(ctx, svc); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, svc); err != nil {
 				logger.Error(err, "failed to update metrics service")
 				return err
@@ -1326,7 +1357,7 @@ func (r *ValkeyReconciler) upsertServiceMonitor(ctx context.Context, valkey *hyp
 		return err
 	}
 	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, sm)
-	if err != nil && errors.IsNotFound(err) {
+	if err != nil && apierrors.IsNotFound(err) {
 		if err := r.Create(ctx, sm); err != nil {
 			logger.Error(err, "failed to create prometheus service monitor")
 			return err
@@ -1393,7 +1424,7 @@ func (r *ValkeyReconciler) upsertCertificate(ctx context.Context, valkey *hyperv
 		return err
 	}
 	err = r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, cert)
-	if err != nil && errors.IsNotFound(err) {
+	if err != nil && apierrors.IsNotFound(err) {
 		if err := r.Create(ctx, cert); err != nil {
 			logger.Error(err, "failed to create certificate")
 			return err
@@ -1472,7 +1503,7 @@ func (r *ValkeyReconciler) upsertSecret(ctx context.Context, valkey *hyperv1.Val
 		return "", err
 	}
 	err = r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, secret)
-	if err != nil && errors.IsNotFound(err) {
+	if err != nil && apierrors.IsNotFound(err) {
 		if err := r.Create(ctx, secret); err != nil {
 			logger.Error(err, "failed to update secret")
 			return "", err
@@ -1506,7 +1537,7 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 		return err
 	}
 	if err := r.Create(ctx, sa); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			if err := r.Update(ctx, sa); err != nil {
 				logger.Error(err, "failed to update service account")
 				return err
@@ -1844,7 +1875,7 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 		return err
 	}
 	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, pdb)
-	if err != nil && errors.IsNotFound(err) {
+	if err != nil && apierrors.IsNotFound(err) {
 		if err := r.Create(ctx, pdb); err != nil {
 			logger.Error(err, "failed to create pod disruption budget")
 			return err
@@ -2393,6 +2424,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			"valkey-server",
 			"/valkey/etc/valkey.conf",
 			"--requirepass", "$(VALKEY_PASSWORD)",
+			"--primaryauth", "$(VALKEY_PASSWORD)",
 		}
 	}
 	if valkey.Spec.ExternalAccess != nil && valkey.Spec.ExternalAccess.Enabled {
@@ -2408,8 +2440,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 		return err
 	}
 
-	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, sts)
-	if err != nil && errors.IsNotFound(err) {
+	existingSts := &appsv1.StatefulSet{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, existingSts)
+	if err != nil && apierrors.IsNotFound(err) {
 		if err := r.Create(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset")
 			return err
@@ -2421,49 +2454,106 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 		return err
 	}
 
-	if *sts.Spec.Replicas != valkey.Spec.Shards {
+	updateReasons := make([]string, 0)
+	if !cmp.Equal(existingSts.Spec.Template.Spec.Containers[0].Env, sts.Spec.Template.Spec.Containers[0].Env) {
+		updateReasons = append(updateReasons, "env")
+	}
+	if !cmp.Equal(existingSts.Spec.Template.Spec.Containers[0].Command, sts.Spec.Template.Spec.Containers[0].Command) {
+		updateReasons = append(updateReasons, "command")
+	}
+
+	if *existingSts.Spec.Replicas != (valkey.Spec.Shards * (valkey.Spec.Replicas + 1)) {
 		replicas := valkey.Spec.Shards * (valkey.Spec.Replicas + 1)
 		sts.Spec.Replicas = &replicas
 		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getNodeNames(valkey)
-		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update statefulset")
-			return err
-		}
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (replicas)", valkey.Namespace, valkey.Name))
+		updateReasons = append(updateReasons, "replicas")
 	}
-	if valkey.Spec.Prometheus && len(sts.Spec.Template.Spec.Containers) == 1 {
+	if valkey.Spec.Prometheus && len(existingSts.Spec.Template.Spec.Containers) == 1 {
 		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
-		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update statefulset")
-			return err
-		}
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (exporter)", valkey.Namespace, valkey.Name))
+		updateReasons = append(updateReasons, "exporter")
 	}
-	if sts.Spec.Template.Spec.Containers[0].Image != image {
+	if existingSts.Spec.Template.Spec.Containers[0].Image != image {
 		sts.Spec.Template.Spec.Containers[0].Image = image
 		if valkey.Spec.VolumePermissions {
 			sts.Spec.Template.Spec.InitContainers[0].Image = image
 		}
-		if err := r.Update(ctx, sts); err != nil {
-			logger.Error(err, "failed to update statefulset image")
+		updateReasons = append(updateReasons, "image")
+	}
+	if valkey.Spec.Storage != nil && len(existingSts.Spec.VolumeClaimTemplates) == 0 {
+		err = fmt.Errorf("storage has been added but cannot be updated in a statefuleset")
+		logger.Error(err, "unable to update storage in statefulset")
+		return err
+	} else if valkey.Spec.Storage == nil && len(existingSts.Spec.VolumeClaimTemplates) == 1 {
+		err = fmt.Errorf("storage has been removed but cannot be updated in a statefuleset")
+		logger.Error(err, "unable to update storage in statefulset")
+		return err
+	} else {
+		defaultStorageClass := r.defaultStorageClass(ctx)
+		currentPVCSpec := existingSts.Spec.VolumeClaimTemplates[0].Spec
+		definedPVCSpec := valkey.Spec.Storage.Spec
+		if definedPVCSpec.VolumeMode == nil {
+			// The default is Filesystem
+			fs := corev1.PersistentVolumeFilesystem
+			definedPVCSpec.VolumeMode = &fs
+		}
+		if definedPVCSpec.StorageClassName == nil {
+			definedPVCSpec.StorageClassName = &defaultStorageClass
+		}
+		if currentPVCSpec.StorageClassName == nil {
+			currentPVCSpec.StorageClassName = &defaultStorageClass
+		}
+		if !cmp.Equal(currentPVCSpec, definedPVCSpec) {
+			err = fmt.Errorf("volume claim template has changed and cannot be updated in a statefuleset")
+			logger.Error(err, "unable to update storage in statefulset")
 			return err
 		}
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (image)", valkey.Namespace, valkey.Name))
 	}
 	exporterImage := r.GlobalConfig.SidecarImage
 	if valkey.Spec.ExporterImage != "" {
 		exporterImage = valkey.Spec.ExporterImage
 	}
-	if valkey.Spec.Prometheus && sts.Spec.Template.Spec.Containers[1].Image != exporterImage {
+	if valkey.Spec.Prometheus && existingSts.Spec.Template.Spec.Containers[1].Image != exporterImage {
 		sts.Spec.Template.Spec.Containers[1].Image = exporterImage
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset exporter image")
 			return err
 		}
-		r.Recorder.Event(valkey, "Normal", "Updated", fmt.Sprintf("StatefulSet %s/%s is updated (exporter image)", valkey.Namespace, valkey.Name))
+		r.Recorder.Event(valkey, "Normal", "Updated",
+			fmt.Sprintf("StatefulSet %s/%s is updated (exporter image)", valkey.Namespace, valkey.Name))
+	}
+
+	if len(updateReasons) > 0 {
+		if err := r.Update(ctx, sts); err != nil {
+			logger.Error(err, "failed to update statefulset")
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Updated",
+			fmt.Sprintf("StatefulSet %s/%s is updated (%s)",
+				valkey.Namespace, valkey.Name,
+				strings.Join(updateReasons, ", "),
+			),
+		)
+
 	}
 
 	return nil
+}
+
+// defaultStorageClass returns the default storage class for the cluster
+func (r *ValkeyReconciler) defaultStorageClass(ctx context.Context) string {
+	logger := log.FromContext(ctx)
+
+	storageClassList := &storagev1.StorageClassList{}
+	if err := r.List(ctx, storageClassList); err != nil {
+		logger.Error(err, "failed to list storage classes")
+		return ""
+	}
+	for _, sc := range storageClassList.Items {
+		if sc.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" {
+			return sc.Name
+		}
+	}
+	return ""
 }
 
 // SetupWithManager sets up the controller with the Manager.
