@@ -270,8 +270,9 @@ func (r *ValkeyReconciler) getCACertificate(ctx context.Context, valkey *hyperv1
 func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valkey, password string) error {
 	logger := log.FromContext(ctx)
 
+	initHost := fmt.Sprintf("%s.%s.svc", valkey.Name, valkey.Namespace)
 	opt := valkeyClient.ClientOption{
-		InitAddress: []string{valkey.Name + "." + valkey.Namespace + ".svc:6379"},
+		InitAddress: []string{fmt.Sprintf("%s:6379", initHost)},
 	}
 	if !valkey.Spec.AnonymousAuth {
 		opt.Password = password
@@ -294,7 +295,7 @@ func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valke
 		opt.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			RootCAs:    certpool,
-			ServerName: valkey.Name + "." + valkey.Namespace + ".svc",
+			ServerName: initHost,
 		}
 	}
 	vClient, err := valkeyClient.NewClient(opt)
@@ -525,6 +526,7 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 			opt.TLSConfig = &tls.Config{
 				MinVersion: tls.VersionTLS12,
 				RootCAs:    certpool,
+				ServerName: podName,
 			}
 		}
 		clients[podName], err = valkeyClient.NewClient(opt)
@@ -653,7 +655,8 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 	}
 	clients := map[string]valkeyClient.Client{}
 	for podName, ip := range ips {
-		address := podName + "." + valkey.Name + "-headless." + valkey.Namespace + ":6379"
+		host := fmt.Sprintf("%s.%s-headless.%s.svc", podName, valkey.Name, valkey.Namespace)
+		address := host + ":6379"
 		logger.Info("working on node", "ip", ip, "pod", podName, "address", address)
 		opt := valkeyClient.ClientOption{
 			InitAddress:       []string{address},
@@ -680,6 +683,7 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 			opt.TLSConfig = &tls.Config{
 				MinVersion: tls.VersionTLS12,
 				RootCAs:    certpool,
+				ServerName: host,
 			}
 		}
 		clients[podName], err = valkeyClient.NewClient(opt)
@@ -1529,8 +1533,9 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	logger := log.FromContext(ctx)
 
 	// connect to the first node!
+	initHost := fmt.Sprintf("%s-0.%s-headless.%s.svc", valkey.Name, valkey.Name, valkey.Namespace)
 	opt := valkeyClient.ClientOption{
-		InitAddress: []string{valkey.Name + "-0." + valkey.Name + "-headless." + valkey.Namespace + ".svc:6379"},
+		InitAddress: []string{fmt.Sprintf("%s:6379", initHost)},
 	}
 	if !valkey.Spec.AnonymousAuth {
 		var err error
@@ -1557,6 +1562,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		opt.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			RootCAs:    certpool,
+			ServerName: initHost,
 		}
 	}
 	vClient, err := valkeyClient.NewClient(opt)
