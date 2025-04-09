@@ -9,4 +9,4 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: valkey-operator
     control-plane: controller-manager
-  name: config
+  name: valkey-operator-config

@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/hyperspike/valkey-operator
-  newTag: 561498f
+  newTag: 0.0.59

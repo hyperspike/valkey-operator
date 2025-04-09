@@ -5,7 +5,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: valkey-operator
-  name: valkey-editor-role
+  name: valkey-operator-valkey-editor-role
 rules:
 - apiGroups:
   - hyperspike.io
