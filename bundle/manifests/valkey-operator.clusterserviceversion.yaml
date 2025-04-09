@@ -19,9 +19,9 @@ metadata:
           }
         }
       ]
-    operatorframework.io/suggested-namespace: valkey-operator
     capabilities: Basic Install
-    createdAt: "2025-04-09T01:31:08Z"
+    createdAt: "2025-04-09T01:40:45Z"
+    operatorframework.io/suggested-namespace: valkey-operator
     operators.operatorframework.io/builder: operator-sdk-v1.39.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: valkey-operator.v0.0.59
