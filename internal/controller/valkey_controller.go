@@ -2192,7 +2192,8 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 									Name: "POD_NAME",
 									ValueFrom: &corev1.EnvVarSource{
 										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.name",
+											APIVersion: "v1",
+											FieldPath:  "metadata.name",
 										},
 									},
 								},
