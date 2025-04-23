@@ -13,7 +13,7 @@ require (
 	github.com/valkey-io/valkey-go v1.0.55
 	go.uber.org/zap v1.27.0
 	k8s.io/api v0.32.2
-	k8s.io/apimachinery v0.32.2
+	k8s.io/apimachinery v0.32.4
 	k8s.io/client-go v0.32.2
 	sigs.k8s.io/controller-runtime v0.20.2
 )
