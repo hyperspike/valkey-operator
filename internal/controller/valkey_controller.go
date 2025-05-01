@@ -28,6 +28,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -53,6 +54,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	hyperv1 "hyperspike.io/valkey-operator/api/v1"
 	globalcfg "hyperspike.io/valkey-operator/cfg"
@@ -64,7 +66,12 @@ const (
 	LoadBalancer      = "LoadBalancer"
 	ValkeyProxy       = "valkey-proxy"
 	Valkey            = "valkey"
+	ValkeyPort        = 6379
+	// DefaultProxyImage is the default image for the proxy
+	DefaultProxyImage = "envoyproxy/envoy:v1.32.1"
 )
+
+var _ reconcile.Reconciler = &ValkeyReconciler{}
 
 func init() {
 	buf := make([]byte, 1)
@@ -124,34 +131,35 @@ var scripts embed.FS
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.18.2/pkg/reconcile
 func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) { // nolint:gocyclo
+	var err error
 	_ = log.FromContext(ctx)
 
 	valkey := &hyperv1.Valkey{}
-	if err := r.Get(ctx, req.NamespacedName, valkey); err != nil {
+	if err = r.Get(ctx, req.NamespacedName, valkey); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	err := r.validateValkeySpec(valkey)
+	err = r.validateValkeySpec(valkey)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if err := r.upsertConfigMap(ctx, valkey); err != nil {
+	if err = r.upsertConfigMap(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.upsertService(ctx, valkey); err != nil {
+	if err = r.upsertService(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.upsertServiceHeadless(ctx, valkey); err != nil {
+	if err = r.upsertServiceHeadless(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.upsertServiceAccount(ctx, valkey); err != nil {
+	if err = r.upsertServiceAccount(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
 	if valkey.Spec.Prometheus {
-		if err := r.upsertServiceMonitor(ctx, valkey); err != nil {
+		if err = r.upsertServiceMonitor(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
-		if err := r.upsertMetricsService(ctx, valkey); err != nil {
+		if err = r.upsertMetricsService(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -171,45 +179,43 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	if externalAccess && externalType == "Proxy" {
 		if valkey.Spec.TLS {
-			if err := r.upsertProxyCertificate(ctx, valkey); err != nil {
+			if err = r.upsertProxyCertificate(ctx, valkey); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
-		if err := r.upsertExternalAccessProxySecret(ctx, valkey); err != nil {
+		if err = r.upsertExternalAccessProxySecret(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
-		if err := r.upsertExternalAccessProxySvc(ctx, valkey); err != nil {
+		if err = r.upsertExternalAccessProxySvc(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
-		if err := r.upsertExternalAccessProxyDeployment(ctx, valkey); err != nil {
+		if err = r.upsertExternalAccessProxyDeployment(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	if valkey.Spec.TLS {
-		if err := r.upsertCertificate(ctx, valkey); err != nil {
+		if err = r.upsertCertificate(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	password := ""
 	if !valkey.Spec.AnonymousAuth {
-		var err error
-		password, err = r.upsertSecret(ctx, valkey, true)
+		_, err = r.upsertSecret(ctx, valkey, true)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
-	if err := r.upsertPodDisruptionBudget(ctx, valkey); err != nil {
+	if err = r.upsertPodDisruptionBudget(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.upsertStatefulSet(ctx, valkey); err != nil {
+	if err = r.upsertStatefulSet(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.initCluster(ctx, valkey); err != nil {
+	if err = r.initCluster(ctx, valkey); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, err
 	}
-	if err := r.checkState(ctx, valkey, password); err != nil {
+	if err = r.checkState(ctx, valkey); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
 	}
 	if externalType != LoadBalancer {
@@ -231,7 +237,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 func (r *ValkeyReconciler) validateValkeySpec(valkey *hyperv1.Valkey) error {
 	if valkey.Spec.Shards < 1 {
-		valkey.Spec.Shards = int32(r.GlobalConfig.Nodes)
+		valkey.Spec.Shards = r.GlobalConfig.Nodes
 		if valkey.Spec.Shards < 1 {
 			return fmt.Errorf("shards must be at least 1, got %d", valkey.Spec.Shards)
 		}
@@ -298,38 +304,12 @@ func (r *ValkeyReconciler) getCACertificate(ctx context.Context, valkey *hyperv1
 	return string(tls.Data["ca.crt"]), nil
 }
 
-func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valkey, password string) error {
+func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
 	initHost := fmt.Sprintf("%s.%s.svc", valkey.Name, valkey.Namespace)
-	opt := valkeyClient.ClientOption{
-		InitAddress: []string{fmt.Sprintf("%s:6379", initHost)},
-	}
-	if !valkey.Spec.AnonymousAuth {
-		opt.Password = password
-	}
-	if valkey.Spec.TLS {
-		ca, err := r.getCACertificate(ctx, valkey)
-		if err != nil {
-			logger.Error(err, "failed to get ca certificate")
-			return err
-		}
-		if ca == "" {
-			return fmt.Errorf("ca certificate not ready")
-		}
-		certpool, err := x509.SystemCertPool()
-		if err != nil {
-			logger.Error(err, "failed to get system cert pool")
-			return err
-		}
-		certpool.AppendCertsFromPEM([]byte(ca))
-		opt.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			RootCAs:    certpool,
-			ServerName: initHost,
-		}
-	}
-	vClient, err := valkeyClient.NewClient(opt)
+	initAddress := fmt.Sprintf("%s:%d", initHost, ValkeyPort)
+	vClient, err := r.getClient(ctx, valkey, initAddress, false)
 	if err != nil {
 		logger.Error(err, "failed to create valkey client")
 		return err
@@ -363,7 +343,7 @@ func (r *ValkeyReconciler) upsertService(ctx context.Context, valkey *hyperv1.Va
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "tcp-valkey",
-					Port:       6379,
+					Port:       ValkeyPort,
 					TargetPort: intstr.FromString("tcp-valkey"),
 					Protocol:   corev1.ProtocolTCP,
 					NodePort:   0,
@@ -481,19 +461,28 @@ func (r *ValkeyReconciler) GetPassword(ctx context.Context, valkey *hyperv1.Valk
 	return string(secret.Data["password"]), nil
 }
 
-func (r *ValkeyReconciler) getPodNames(ctx context.Context, valkey *hyperv1.Valkey) ([]string, error) {
-	logger := log.FromContext(ctx)
+func (r *ValkeyReconciler) buildCluster(ctx context.Context, valkey *hyperv1.Valkey) (*valkeyCluster, func(), error) {
 
-	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
-		logger.Error(err, "failed to list pods")
-		return nil, err
+	nodes, closeNodes, err := r.getClusterNodes(ctx, valkey)
+	shards := make([]*valkeyShard, valkey.Spec.Shards)
+	for i := 0; i < int(valkey.Spec.Shards); i++ {
+		shards[i] = &valkeyShard{
+			id:      i,
+			slotMin: i * 16384 / int(valkey.Spec.Shards),
+			slotMax: (i+1)*16384/int(valkey.Spec.Shards) - 1,
+			nodes:   make([]*valkeyNode, 0),
+		}
 	}
-	names := []string{}
-	for _, pod := range pods.Items {
-		names = append(names, pod.Name+"."+valkey.Name+"-headless."+valkey.Namespace+".svc")
+	for _, node := range nodes {
+		shards[node.shard].nodes = append(shards[node.shard].nodes, node)
+
 	}
-	return names, nil
+
+	cluster := &valkeyCluster{
+		shards: shards,
+	}
+
+	return cluster, closeNodes, err
 }
 
 func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
@@ -501,166 +490,321 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 
 	logger.Info("initializing cluster")
 
-	podNames, err := r.getPodNames(ctx, valkey)
+	cluster, closeClients, err := r.buildCluster(ctx, valkey)
+	defer closeClients()
 	if err != nil {
-		logger.Error(err, "failed to get pod names")
+		logger.Error(err, "failed to build cluster")
 		return err
 	}
-
-	tmpips, err := r.getPodIPs(ctx, valkey)
-	if err != nil {
-		logger.Error(err, "failed to get pod ips")
-		return err
+	if cluster == nil {
+		logger.Info("cluster is nil")
+		return nil
 	}
 
-	ips := map[string]string{}
-	for ip, host := range tmpips {
-		ips[host] = ip
+	// get all connected nodes
+	connectedNodes := make([]*valkeyNode, 0)
+	for _, shard := range cluster.shards {
+		for _, node := range shard.nodes {
+			if !node.connected {
+				continue
+			}
+			connectedNodes = append(connectedNodes, node)
+		}
 	}
 
-	clients := map[string]valkeyClient.Client{}
-	for _, podName := range podNames {
-		_, ok := ips[podName]
-		if !ok {
-			logger.Info("ip not found", "pod", podName)
-			return fmt.Errorf("ip not found for %s", podName)
-		}
-		address := podName + ":6379"
-		opt := valkeyClient.ClientOption{
-			InitAddress:       []string{address},
-			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
-		}
-		if !valkey.Spec.AnonymousAuth {
-			var err error
-			opt.Password, err = r.GetPassword(ctx, valkey)
-			if err != nil {
-				logger.Error(err, "failed to get password")
-				return err
-			}
-		}
-
-		if valkey.Spec.TLS {
-			ca, err := r.getCACertificate(ctx, valkey)
-			if err != nil {
-				logger.Error(err, "failed to get ca certificate")
-				return err
-			}
-			if ca == "" {
-				return fmt.Errorf("ca certificate not ready")
-			}
-			certpool, err := x509.SystemCertPool()
-			if err != nil {
-				logger.Error(err, "failed to get system cert pool")
-				return err
-			}
-			certpool.AppendCertsFromPEM([]byte(ca))
-			opt.TLSConfig = &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				RootCAs:    certpool,
-				ServerName: podName,
-			}
-		}
-		clients[podName], err = valkeyClient.NewClient(opt)
-		if err != nil {
-			logger.Error(err, "failed to create valkey client")
-			return err
-		}
-		defer clients[podName].Close()
+	expectedNodeCount := int(valkey.Spec.Shards + valkey.Spec.Shards*valkey.Spec.Replicas)
+	if len(connectedNodes) != expectedNodeCount {
+		logger.Error(fmt.Errorf("not all nodes are connected yet, expected %d, got %d",
+			expectedNodeCount, len(connectedNodes)), "not all nodes are connected yet", "expected", expectedNodeCount, "connected", len(connectedNodes))
 	}
 
-	counter := 0
-	for podName, client := range clients {
-		logger.Info("setting epoch", "pod", podName)
-		r.Recorder.Event(valkey, "Normal", "Setting",
-			fmt.Sprintf("Setting epoch on pod %s for %s/%s", podName, valkey.Namespace, valkey.Name))
-		info, err := client.Do(ctx, client.B().ClusterInfo().Build()).ToString()
-		if err != nil {
-			logger.Error(err, "failed to get epoch")
-			return err
-		}
-		e := "0"
-		for _, line := range strings.Split(info, "\r\n") {
-			if strings.HasPrefix(line, "cluster_my_epoch") {
-				e = strings.Split(line, ":")[1]
-			}
-		}
-		epoch, err := strconv.Atoi(e)
-		if err != nil {
-			logger.Error(err, "failed to parse epoch")
-			return err
-		}
-		if epoch > 0 {
-			logger.Info("epoch already set", "epoch", epoch)
+	// ensure that all nodes in the cluster are connected to each other
+	for _, node := range connectedNodes {
+		if !node.connected {
 			continue
 		}
-		if err := client.Do(ctx, client.B().ClusterSetConfigEpoch().ConfigEpoch(int64(counter+1)).Build()).Error(); err != nil {
-			logger.Error(err, "failed to set epoch")
-			return err
+		for _, peer := range connectedNodes {
+			if node == peer {
+				continue
+			}
+			if err = node.client.Do(ctx,
+				node.client.B().ClusterMeet().Ip(peer.ip).Port(int64(peer.port)).Build()).Error(); err != nil {
+				logger.Error(err, "failed to cluster meet")
+				return err
+			}
 		}
-		counter++
 	}
 
-	// set cluster slotrange
-	slotRange := 16384 / int(valkey.Spec.Shards)
-	prevEnd := 0
-	for i := 0; i < int(valkey.Spec.Shards); i++ {
-		logger.Info("setting slotrange", "shard", i)
-		r.Recorder.Event(valkey, "Normal", "Setting",
-			fmt.Sprintf("Setting slotrange on shard %d for %s/%s", i, valkey.Namespace, valkey.Name))
-		info, err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterInfo().Build()).ToString()
-		if err != nil {
-			logger.Error(err, "failed to get cluster into")
-			return err
-		}
-		cont := false
-		for _, line := range strings.Split(info, "\r\n") {
-			if strings.HasPrefix(line, "cluster_slots_assigned") {
-				if strings.Split(line, ":")[1] != "0" {
-					logger.Info("slotrange already set")
-					cont = true
+	// forget any old nodes from the cluster that are not connected
+	for _, shard := range cluster.shards {
+		for _, node := range shard.nodes {
+			if !node.connected {
+				continue
+			}
+			info, err := node.client.Do(ctx, node.client.B().ClusterNodes().Build()).ToString()
+			if err != nil {
+				logger.Error(err, "failed to fetch cluster nodes info", "node", node.name)
+				return err
+			}
+
+			for _, line := range strings.Split(info, "\n") {
+				line = strings.TrimPrefix(line, "txt:")
+				if line == "" {
+					continue
+				}
+				parts := strings.Split(line, " ")
+				if len(parts) < 4 {
+					logger.Error(fmt.Errorf("invalid cluster node info"), "incorrect parts length from cluster info",
+						"line", line)
+					continue
+				}
+				flags := strings.Split(parts[2], ",")
+				if slices.Contains(flags, "myself") || slices.Contains(flags, "master") {
+					continue
+				}
+				peerId := parts[0]
+				connected := parts[7]
+				if connected == "disconnected" {
+					_ = node.client.Do(ctx, node.client.B().ClusterForget().NodeId(peerId).Build()).Error()
 				}
 			}
 		}
-		if cont {
-			continue
-		}
-		start := prevEnd + 1
-		if i == 0 {
-			start = 0
-		}
-		end := start + slotRange
-		if i == int(valkey.Spec.Shards)-1 {
-			end = 16383
-		}
-		if err := clients[podNames[i]].Do(ctx, clients[podNames[i]].B().ClusterAddslotsrange().StartSlotEndSlot().StartSlotEndSlot(int64(start), int64(end)).Build()).Error(); err != nil {
-			logger.Error(err, "failed to set slotrange")
-			return err
-		}
-		prevEnd = end
 	}
 
-	// set cluster meet
-	for _, podName := range podNames {
-		for _, shard := range podNames {
-			if shard == podName {
-				continue
-			}
-			logger.Info("node meeting peer", "peer", shard, "pod", podName)
-			r.Recorder.Event(valkey, "Normal", "Setting",
-				fmt.Sprintf("Node meeting peer %s on pod %s for %s/%s", shard, podName, valkey.Namespace, valkey.Name))
-			ip, ok := ips[shard]
-			if !ok {
-				logger.Info("ip not found", "pod", shard)
-				return fmt.Errorf("ip not found for %s", shard)
-			}
-			if err := clients[podName].Do(ctx, clients[podName].B().ClusterMeet().Ip(ip).Port(6379).Build()).Error(); err != nil {
-				logger.Error(err, "failed to cluster meet", "shard", shard, "ip", shard, "pod", podName)
-				return err
+	// for each shard, check the nodes to ensure that they are configured correctly
+	for _, shard := range cluster.shards {
+		if len(shard.nodes) == 0 {
+			continue
+		}
+		master := shard.nodes[0]
+		for _, node := range shard.nodes {
+			if node.isPrimary() {
+				master = node
+				break
 			}
 		}
+		for _, node := range shard.nodes {
+			if node == master {
+				if node.client == nil {
+					node.connected = false
+					continue
+				}
+				var info string
+				// check that the slots match that of the shard
+				info, err = node.client.Do(ctx, node.client.B().ClusterNodes().Build()).ToString()
+				if err != nil {
+					logger.Error(err, "failed to fetch cluster info", "node", node.name)
+					return err
+				}
+
+				for _, line := range strings.Split(info, "\n") {
+					_ = strings.TrimPrefix(line, "txt:")
+					_ = strings.TrimSuffix(line, "\r")
+					if line == "" {
+						continue
+					}
+					parts := strings.Split(line, " ")
+					if len(parts) < 4 {
+						logger.Error(fmt.Errorf("invalid cluster node info"),
+							"incorrect parts length from cluster info",
+							"line", line)
+						continue
+					}
+					flags := strings.Split(parts[2], ",")
+					if slices.Contains(flags, "myself") {
+						var slotsRange string
+						if len(parts) < 9 {
+							slotsRange = ""
+						} else {
+							slotsRange = parts[8]
+						}
+						if slotsRange != fmt.Sprintf("%d-%d", shard.slotMin, shard.slotMax) {
+							// delete any existing slot range
+							_ = node.client.Do(ctx,
+								node.client.B().ClusterDelslotsrange().StartSlotEndSlot().StartSlotEndSlot(0,
+									16383).Build()).Error()
+							// set new slot range
+							err = node.client.Do(ctx,
+								node.client.B().ClusterAddslotsrange().StartSlotEndSlot().StartSlotEndSlot(int64(shard.slotMin),
+									int64(shard.slotMax)).Build()).Error()
+							if err != nil {
+								logger.Error(err, "failed to set slots range")
+								return err
+							}
+							r.Recorder.Event(valkey, "Normal", "Setting",
+								fmt.Sprintf("Set slotrange on shard %d for %s/%s", shard.id, valkey.Namespace,
+									valkey.Name))
+						}
+					}
+				}
+			} else if node.primary != master.id {
+				err = node.client.Do(ctx, node.client.B().ClusterReplicate().NodeId(master.id).Build()).Error()
+				if err != nil {
+					logger.Error(err, "failed to cluster replicate")
+					return err
+				}
+				logger.Info("configured replica", "shard", shard.id, "node", node.name)
+				r.Recorder.Event(valkey, "Normal", "Setting",
+					fmt.Sprintf("Configured replica for shard %d on node %s for %s/%s", shard.id, node.name,
+						valkey.Namespace,
+						valkey.Name))
+			}
+		}
+	}
+
+	// log cluster details after init
+	if len(connectedNodes) > 0 {
+		vc := connectedNodes[0].client
+		_ = logClusterDetails(ctx, vc)
 	}
 
 	return nil
+}
+
+func (r *ValkeyReconciler) getClusterNodes(ctx context.Context, valkey *hyperv1.Valkey) (map[string]*valkeyNode, func(), error) {
+	logger := log.FromContext(ctx)
+
+	closeFuncs := make([]func(), 0)
+	closer := func() {
+		for _, closeFunc := range closeFuncs {
+			closeFunc()
+		}
+	}
+
+	podList := &corev1.PodList{}
+	if err := r.List(ctx, podList, client.InNamespace(valkey.Namespace),
+		client.MatchingLabels(labels(valkey))); err != nil {
+		logger.Error(err, "failed to list nodes")
+		return nil, func() {}, err
+	}
+
+	nodes := make(map[string]*valkeyNode, len(podList.Items))
+	for _, pod := range podList.Items {
+		num, err := stsPodIndex(pod.Name)
+		if err != nil {
+			logger.Error(err, "failed to extract number from node name")
+			return nil, func() {}, err
+		}
+		shard := num % int(valkey.Spec.Shards)
+
+		nodes[pod.Name] = &valkeyNode{
+			name:  pod.Name,
+			shard: shard,
+			ip:    pod.Status.PodIP,
+		}
+	}
+
+	for _, node := range nodes {
+		vc, err := r.getClient(ctx, valkey, fmt.Sprintf("%s:%d", node.ip, ValkeyPort), true)
+		if err != nil {
+			node.connected = false
+		}
+		if vc == nil {
+			logger.Error(fmt.Errorf("failed to create valkey client"), "failed to create valkey client", "node", node.name)
+			continue
+			//return nil, closer, fmt.Errorf("failed to create valkey client")
+		}
+		closeFuncs = append(closeFuncs, vc.Close)
+		node.client = vc
+
+		// fetch node details
+		info, err := vc.Do(ctx, vc.B().Info().Build()).ToString()
+		if err != nil {
+			logger.Error(err, "failed to fetch node info", "node", node.name)
+			return nil, closer, err
+		}
+
+		for _, line := range strings.Split(info, "\n") {
+			line = strings.TrimPrefix(line, "txt:")
+			line = strings.TrimSuffix(line, "\r")
+			if strings.HasPrefix(line, "# ") {
+				continue
+			}
+			parts := strings.Split(line, ":")
+			if parts[0] == "tcp_port" {
+				node.port, err = strconv.Atoi(parts[1])
+				if err != nil {
+					logger.Error(err, "failed to parse tcp port", "node", node.name)
+					return nil, closer, err
+				}
+			}
+		}
+
+		// fetch cluster details
+		info, err = vc.Do(ctx, vc.B().ClusterNodes().Build()).ToString()
+		if err != nil {
+			logger.Error(err, "failed to fetch cluster nodes info", "node", node.name)
+			return nil, closer, err
+		}
+
+		for _, line := range strings.Split(info, "\n") {
+			line = strings.TrimPrefix(line, "txt:")
+			parts := strings.Split(line, " ")
+			if len(parts) < 4 {
+				logger.Error(fmt.Errorf("invalid cluster node info"), "invalid cluster node info", "line", line)
+				continue
+			}
+			flags := strings.Split(parts[2], ",")
+			if slices.Contains(flags, "myself") {
+				if !slices.Contains(flags, "master") {
+					node.primary = parts[3]
+				}
+				node.id = parts[0]
+				node.port = ValkeyPort
+				node.flags = flags
+				node.connected = true
+				break
+			}
+		}
+	}
+
+	return nodes, closer, nil
+}
+
+// getClient returns a valkey client for the given address
+func (r *ValkeyReconciler) getClient(ctx context.Context, valkey *hyperv1.Valkey, address string, single bool) (valkeyClient.Client, error) {
+	logger := log.FromContext(ctx)
+
+	opt := valkeyClient.ClientOption{
+		InitAddress:       []string{address},
+		ForceSingleClient: single,
+	}
+	if !valkey.Spec.AnonymousAuth {
+		var err error
+		opt.Password, err = r.GetPassword(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get password")
+			return nil, err
+		}
+	}
+
+	if valkey.Spec.TLS {
+		ca, err := r.getCACertificate(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get ca certificate")
+			return nil, err
+		}
+		if ca == "" {
+			return nil, fmt.Errorf("ca certificate not ready")
+		}
+		certpool, err := x509.SystemCertPool()
+		if err != nil {
+			logger.Error(err, "failed to get system cert pool")
+			return nil, err
+		}
+		certpool.AppendCertsFromPEM([]byte(ca))
+		opt.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    certpool,
+			ServerName: valkey.Name,
+		}
+	}
+	vc, err := valkeyClient.NewClient(opt)
+	if err != nil {
+		logger.Error(err, "failed to create valkey client", "address", address)
+		return nil, err
+	}
+	return vc, nil
 }
 
 func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyperv1.Valkey) error {
@@ -675,49 +819,12 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 	if len(ips) == 0 {
 		return apierrors.NewBadRequest("external ip is empty")
 	}
-	password := ""
-	if !valkey.Spec.AnonymousAuth {
-		var err error
-		password, err = r.GetPassword(ctx, valkey)
-		if err != nil {
-			logger.Error(err, "failed to get password")
-			return err
-		}
-	}
 	clients := map[string]valkeyClient.Client{}
 	for podName, ip := range ips {
 		host := fmt.Sprintf("%s.%s-headless.%s.svc", podName, valkey.Name, valkey.Namespace)
-		address := host + ":6379"
+		address := fmt.Sprintf("%s:%d", host, ValkeyPort)
 		logger.Info("working on node", "ip", ip, "pod", podName, "address", address)
-		opt := valkeyClient.ClientOption{
-			InitAddress:       []string{address},
-			ForceSingleClient: true, // this is necessary to avoid failing through to another shard and setting the wrong ip
-		}
-		if !valkey.Spec.AnonymousAuth {
-			opt.Password = password
-		}
-		if valkey.Spec.TLS {
-			ca, err := r.getCACertificate(ctx, valkey)
-			if err != nil {
-				logger.Error(err, "failed to get ca certificate")
-				return err
-			}
-			if ca == "" {
-				return fmt.Errorf("ca certificate not ready")
-			}
-			certpool, err := x509.SystemCertPool()
-			if err != nil {
-				logger.Error(err, "failed to get system cert pool")
-				return err
-			}
-			certpool.AppendCertsFromPEM([]byte(ca))
-			opt.TLSConfig = &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				RootCAs:    certpool,
-				ServerName: host,
-			}
-		}
-		clients[podName], err = valkeyClient.NewClient(opt)
+		clients[podName], err = r.getClient(ctx, valkey, address, true)
 		if err != nil {
 			logger.Error(err, "failed to create valkey client")
 			return err
@@ -812,7 +919,7 @@ func (r *ValkeyReconciler) upsertExternalAccessLBSvc(ctx context.Context, valkey
 				Ports: []corev1.ServicePort{
 					{
 						Name:       "tcp-valkey",
-						Port:       6379,
+						Port:       ValkeyPort,
 						TargetPort: intstr.FromString("tcp-valkey"),
 						Protocol:   corev1.ProtocolTCP,
 					},
@@ -869,7 +976,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySvc(ctx context.Context, val
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "tcp-valkey",
-					Port:       6379,
+					Port:       ValkeyPort,
 					TargetPort: intstr.FromString("tcp-valkey"),
 					Protocol:   corev1.ProtocolTCP,
 				},
@@ -974,7 +1081,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxySecret(ctx context.Context, 
             address:
               socket_address:
                 address: `+host+`
-                port_value: 6379`)
+                port_value: `+fmt.Sprintf("%d", ValkeyPort))
 	}
 	tlsServer := ""
 	tlsClient := ""
@@ -1035,7 +1142,7 @@ static_resources:
     address:
       socket_address:
         address: 0.0.0.0
-        port_value: 6379
+        port_value: ` + fmt.Sprintf("%d", ValkeyPort) + `
     filter_chains:
     - filters:
       - name: envoy.filters.network.redis_proxy
@@ -1101,11 +1208,6 @@ admin:
 	return nil
 }
 
-const (
-	// DefaultProxyImage is the default image for the proxy
-	DefaultProxyImage = "envoyproxy/envoy:v1.32.1"
-)
-
 func (r *ValkeyReconciler) upsertExternalAccessProxyDeployment(ctx context.Context, valkey *hyperv1.Valkey) error {
 	logger := log.FromContext(ctx)
 
@@ -1150,7 +1252,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxyDeployment(ctx context.Conte
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "tcp-valkey",
-									ContainerPort: 6379,
+									ContainerPort: ValkeyPort,
 									Protocol:      corev1.ProtocolTCP,
 								},
 							},
@@ -1242,7 +1344,7 @@ func (r *ValkeyReconciler) upsertServiceHeadless(ctx context.Context, valkey *hy
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "tcp-valkey",
-					Port:       6379,
+					Port:       ValkeyPort,
 					TargetPort: intstr.FromString("tcp-valkey"),
 				},
 				{
@@ -1565,38 +1667,8 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 
 	// connect to the first node!
 	initHost := fmt.Sprintf("%s-0.%s-headless.%s.svc", valkey.Name, valkey.Name, valkey.Namespace)
-	opt := valkeyClient.ClientOption{
-		InitAddress: []string{fmt.Sprintf("%s:6379", initHost)},
-	}
-	if !valkey.Spec.AnonymousAuth {
-		var err error
-		opt.Password, err = r.upsertSecret(ctx, valkey, true)
-		if err != nil {
-			return err
-		}
-	}
-	if valkey.Spec.TLS {
-		ca, err := r.getCACertificate(ctx, valkey)
-		if err != nil {
-			logger.Error(err, "failed to get ca certificate")
-			return err
-		}
-		if ca == "" {
-			return fmt.Errorf("ca certificate not ready")
-		}
-		certpool, err := x509.SystemCertPool()
-		if err != nil {
-			logger.Error(err, "failed to get system cert pool")
-			return err
-		}
-		certpool.AppendCertsFromPEM([]byte(ca))
-		opt.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			RootCAs:    certpool,
-			ServerName: initHost,
-		}
-	}
-	vClient, err := valkeyClient.NewClient(opt)
+	initAddress := fmt.Sprintf("%s:%d", initHost, ValkeyPort)
+	vClient, err := r.getClient(ctx, valkey, initAddress, false)
 	if err != nil {
 		logger.Error(err, "failed to create valkey client")
 		return err
@@ -1634,8 +1706,9 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 	}
 	pods := map[string]string{}
 	var tries int
+	expectedPodsLen := int(valkey.Spec.Shards * (valkey.Spec.Replicas + 1))
 	for {
-		if len(pods) != int(valkey.Spec.Shards) {
+		if len(pods) != expectedPodsLen {
 			pods, err = r.getPodIPs(ctx, valkey)
 			if err != nil {
 				logger.Error(err, "failed to get pod ips")
@@ -1688,7 +1761,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 		if !found {
 			var dial int
 			for {
-				network, err := net.Dial("tcp", ipPod+":6379")
+				network, err := net.Dial("tcp", ipPod+":"+fmt.Sprintf("%d", ValkeyPort))
 				if err != nil {
 					if err := network.Close(); err != nil {
 						logger.Error(err, "failed to close network")
@@ -1720,7 +1793,7 @@ func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Val
 				logger.Error(err, "failed to dial")
 				continue
 			}
-			res, err := vClient.Do(ctx, vClient.B().ClusterMeet().Ip(ipPod).Port(6379).Build()).ToString()
+			res, err := vClient.Do(ctx, vClient.B().ClusterMeet().Ip(ipPod).Port(ValkeyPort).Build()).ToString()
 			logger.Info("meeting node "+res, "node", pod)
 			if err != nil {
 				logger.Error(err, "failed to meet node", "node", pod)
@@ -1865,7 +1938,7 @@ func (r *ValkeyReconciler) upsertPodDisruptionBudget(ctx context.Context, valkey
 			Labels:    labels(valkey),
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
-			MaxUnavailable: func(i intstr.IntOrString) *intstr.IntOrString { return &i }(intstr.FromInt(1)),
+			MaxUnavailable: func(i intstr.IntOrString) *intstr.IntOrString { return &i }(intstr.FromInt32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels(valkey),
 			},
@@ -1914,7 +1987,7 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 		Env: []corev1.EnvVar{
 			{
 				Name:  "VALKEY_ADDR",
-				Value: "valkey://127.0.0.1:6379",
+				Value: fmt.Sprintf("valkey://127.0.0.1:%d", ValkeyPort),
 			},
 			{
 				Name:  "VALKEY_EXPORTER_WEB_LISTEN_ADDRESS",
@@ -1985,7 +2058,7 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 		tlsExporterEnv := []corev1.EnvVar{
 			{
 				Name:  "REDIS_ADDR",
-				Value: "rediss://localhost:6379",
+				Value: fmt.Sprintf("rediss://localhost:%d", ValkeyPort),
 			},
 			{
 				Name:  "REDIS_EXPORTER_SKIP_TLS_VERIFICATION",
@@ -2049,6 +2122,7 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 	}
 	return pv
 }
+
 func getResourceRequirements(valkey *hyperv1.Valkey) corev1.ResourceRequirements {
 	if valkey.Spec.Resources != nil {
 		return *valkey.Spec.Resources
@@ -2097,7 +2171,7 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 	}
 }
 
-func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error {
+func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
 	logger := log.FromContext(ctx)
 
 	logger.Info("upserting statefulset")
@@ -2215,13 +2289,13 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 								},
 								{
 									Name:  "VALKEY_PORT_NUMBER",
-									Value: "6379",
+									Value: fmt.Sprintf("%d", ValkeyPort),
 								},
 							},
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "tcp-valkey",
-									ContainerPort: 6379,
+									ContainerPort: ValkeyPort,
 								},
 								{
 									Name:          "tcp-valkey-bus",
@@ -2369,7 +2443,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			},
 			{
 				Name:  "VALKEY_TLS_PORT_NUMBER",
-				Value: "6379",
+				Value: fmt.Sprintf("%d", ValkeyPort),
 			},
 			{
 				Name:  "VALKEY_TLS_CERT_FILE",
@@ -2562,4 +2636,40 @@ func (r *ValkeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&hyperv1.Valkey{}).
 		Complete(r)
+}
+
+// logClusterDetails logs the details of the cluster node configuration
+func logClusterDetails(ctx context.Context, vClient valkeyClient.Client) error {
+	logger := log.FromContext(ctx)
+
+	nodes, err := vClient.Do(ctx, vClient.B().ClusterNodes().Build()).ToString()
+	if err != nil {
+		return err
+	}
+
+	for _, node := range strings.Split(nodes, "\n") {
+		if node == "" {
+			continue
+		}
+		parts := strings.Split(node, " ")
+		if len(parts) < 8 {
+			logger.Info("skipping invalid node entry", "entry", node)
+			continue
+		}
+
+		nodeID := strings.Replace(parts[0], "txt:", "", 1)
+		address := parts[1]
+		role := parts[2]
+		flags := parts[3]
+		slotRange := parts[8:]
+
+		logger.Info("cluster node details",
+			"nodeID", nodeID,
+			"address", address,
+			"role", role,
+			"flags", flags,
+			"slotRange", slotRange,
+		)
+	}
+	return nil
 }

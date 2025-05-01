@@ -11,7 +11,7 @@ RUN apk add --no-cache --virtual .build-deps \
 	musl-dev=1.2.5-r9 \
 	openssl-dev=3.3.3-r0 \
 	gcc=14.2.0-r4 \
-	curl=8.12.1-r0 \
+	curl=~8.12 \
 	make=4.4.1-r2 \
 	&& curl -L https://github.com/valkey-io/valkey/archive/refs/tags/${VALKEY_VERSION}.tar.gz -o valkey.tar.gz \
 	&& tar -xzf valkey.tar.gz --strip-components=1 \
