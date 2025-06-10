@@ -141,7 +141,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.upsertServiceAccount(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if valkey.Spec.Prometheus {
+	if valkey.Spec.Prometheus && valkey.Spec.PrometheusOperator {
 		if err := r.upsertServiceMonitor(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}

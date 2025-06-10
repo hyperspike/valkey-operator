@@ -67,6 +67,10 @@ type ValkeySpec struct {
 	// +optional
 	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
 
+	// Use a service monitor
+	// +kubebuilder:default:=true
+	PrometheusOperator bool `json:"prometheusOperator,omitempty"`
+
 	// Cluster Domain - used for DNS
 	// +kubebuilder:default:=cluster.local
 	ClusterDomain string `json:"clusterDomain"`

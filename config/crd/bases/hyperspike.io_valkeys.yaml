@@ -244,6 +244,10 @@ spec:
                   type: string
                 description: Extra prometheus labels for operator targeting
                 type: object
+              prometheusOperator:
+                default: true
+                description: Use a service monitor
+                type: boolean
               replicas:
                 default: 0
                 description: Number of replicas
