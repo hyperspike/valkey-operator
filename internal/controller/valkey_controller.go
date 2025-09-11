@@ -739,7 +739,7 @@ func (r *ValkeyReconciler) fetchExternalIPs(ctx context.Context, valkey *hyperv1
 	}
 	for _, svc := range svcs.Items {
 		if svc.Labels["app.kubernetes.io/component"] == "valkey-external" && svc.Labels["app.kubernetes.io/instance"] == valkey.Name {
-			podName := strings.ReplaceAll(svc.Name, "-external", "", -1)
+			podName := strings.ReplaceAll(svc.Name, "-external", "")
 			if len(svc.Status.LoadBalancer.Ingress) == 0 {
 				logger.Info("external ip is empty")
 				return nil, nil
