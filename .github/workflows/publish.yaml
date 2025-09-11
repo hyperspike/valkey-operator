@@ -74,7 +74,7 @@ jobs:
         go-version: 1.24
         check-latest: true
     - name: Log in to the Container registry
-      uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+      uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
