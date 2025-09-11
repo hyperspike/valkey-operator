@@ -12,3 +12,8 @@ updates:
   directory: "/"
   schedule:
     interval: "daily"
+  groups:
+    kubernetes:
+      patterns:
+      - k8s.io/*
+
