@@ -126,21 +126,21 @@ jobs:
         cosign sign --yes ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey:${{ env.VALKEY_VERSION }}@${{ steps.docker_build_valkey.outputs.digest }}
 
     - name: Attest the Controller image
-      uses: actions/attest-build-provenance@v2
+      uses: actions/attest-build-provenance@v3
       id: attest_controller
       with:
         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         subject-digest: ${{ steps.docker_build_controller.outputs.digest }}
         push-to-registry: true
     - name: Attest the Sidecar image
-      uses: actions/attest-build-provenance@v2
+      uses: actions/attest-build-provenance@v3
       id: attest_sidecar
       with:
         subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey-sidecar
         subject-digest: ${{ steps.docker_build_sidecar.outputs.digest }}
         push-to-registry: true
     - name: Attest the Valkey image
-      uses: actions/attest-build-provenance@v2
+      uses: actions/attest-build-provenance@v3
       id: attest_valkey
       with:
         subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/valkey

@@ -44,7 +44,7 @@ jobs:
     - name: Build Installer
       run: make build-installer IMG=ghcr.io/${{ github.repository_owner }}/valkey-operator:${{ github.ref_name }}
     - name: Attest
-      uses: actions/attest-build-provenance@v2
+      uses: actions/attest-build-provenance@v3
       id: attest
       with:
         subject-path: |
