@@ -33,15 +33,22 @@ type ValkeySpec struct {
 	Image string `json:"image,omitempty"`
 
 	// Exporter Image to use
-	ExporterImage string `json:"exporterImage,omitempty"`
+	SidecarImage string `json:"sidecarImage,omitempty"`
 
-	// Number of shards
+	// Number of shards (IE master nodes)
 	// +kubebuilder:default:=3
-	Shards int32 `json:"nodes,omitempty"`
+	Shards int32 `json:"shards,omitempty"`
 
-	// Number of replicas
+	// Number of replicas per shard (IE follower nodes)
 	// +kubebuilder:default:=0
 	Replicas int32 `json:"replicas,omitempty"`
+
+	// Auto Upgrade - Automatically upgrade the Valkey version when a new version is available
+	// +kubebuilder:default:=true
+	AutoUpgrade bool `json:"autoUpgrade,omitempty"`
+
+	// Auto Scale - Automatically re-scale the number of shards and replicas.
+	AutoScaling *AutoScaleSpec `json:"autoScaling,omitempty"`
 
 	// Turn on an init container to set permissions on the persistent volume
 	// +kubebuilder:default:=false
@@ -81,7 +88,7 @@ type ValkeySpec struct {
 
 	// External access configuration
 	// +optional
-	ExternalAccess *ExternalAccess `json:"externalAccess,omitempty"`
+	ExternalAccess *ExternalAccessSpec `json:"externalAccess,omitempty"`
 
 	// Anonymous Auth
 	// +kubebuilder:default:=false
@@ -106,8 +113,47 @@ type ValkeySpec struct {
 	ClusterPreferredEndpointType string `json:"clusterPreferredEndpointType,omitempty"`
 }
 
+// AutoScaleSpec defines the autoscale configuration
+type AutoScaleSpec struct {
+	// Enable auto scaling
+	// +kubebuilder:default:=false
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Minimum number of shards
+	// +kubebuilder:default:=3
+	MinShards int32 `json:"minShards,omitempty"`
+
+	// Maximum number of shards
+	// +kubebuilder:default:=5
+	MaxShards int32 `json:"maxShards,omitempty"`
+
+	// Minimum number of replicas
+	// +kubebuilder:default:=0
+	MinReplicas int32 `json:"minReplicas,omitempty"`
+
+	// Maximum number of replicas
+	// +kubebuilder:default:=3
+	MaxReplicas int32 `json:"maxReplicas,omitempty"`
+
+	// CPU threshold for scaling
+	// +kubebuilder:default:=80
+	CPUThreshold int32 `json:"cpuThreshold,omitempty"`
+
+	// Memory threshold for scaling
+	// +kubebuilder:default:=80
+	MemoryThreshold int32 `json:"memoryThreshold,omitempty"`
+
+	// Scale up delay
+	// +kubebuilder:default:="1m"
+	ScaleUpDelay string `json:"scaleUpDelay,omitempty"`
+
+	// Scale down delay
+	// +kubebuilder:default:="45s"
+	ScaleDownDelay string `json:"scaleDownDelay,omitempty"`
+}
+
 // ExternalAccess defines the external access configuration
-type ExternalAccess struct {
+type ExternalAccessSpec struct {
 	// Enable external access
 	// +kubebuilder:default:=false
 	Enabled bool `json:"enabled"`
@@ -181,18 +227,20 @@ type ValkeyStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 	Ready      bool               `json:"ready"`
+	Shards     int32              `json:"shards"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:subresource:scale:specpath=.spec.shards,statuspath=.status.shards
 // +kubebuilder:resource:shortName=vk
 
 // Valkey is the Schema for the valkeys API
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=`.status.ready`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:printcolumn:name="Nodes",type="integer",JSONPath=".spec.nodes"
+// +kubebuilder:printcolumn:name="Shards",type="integer",JSONPath=".spec.shards"
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
-// +kubebuilder:printcolumn:name="Volumme Permissions",type="boolean",priority=1,JSONPath=".spec.volumePermissions"
+// +kubebuilder:printcolumn:name="Vol Perms",type="boolean",priority=1,JSONPath=".spec.volumePermissions"
 // +kubebuilder:printcolumn:name="Image",type="string",priority=1,JSONPath=".spec.image"
 type Valkey struct {
 	metav1.TypeMeta   `json:",inline"`

@@ -184,7 +184,7 @@ func main() {
 	}
 	config := cfg.Defaults()
 	for k, v := range cfgMap.Data {
-		if k == "exporterImage" && v != "" {
+		if k == "sidecarImage" && v != "" {
 			config.SidecarImage = v
 		}
 		if k == "valkeyImage" && v != "" {

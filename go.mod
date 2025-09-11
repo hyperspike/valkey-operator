@@ -1,6 +1,6 @@
 module hyperspike.io/valkey-operator
 
-go 1.23.6
+go 1.24.0
 
 require (
 	github.com/cert-manager/cert-manager v1.17.1
