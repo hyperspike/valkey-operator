@@ -240,7 +240,7 @@ type ValkeyStatus struct {
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Shards",type="integer",JSONPath=".spec.shards"
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
-// +kubebuilder:printcolumn:name="Volumme Permissions",type="boolean",priority=1,JSONPath=".spec.volumePermissions"
+// +kubebuilder:printcolumn:name="Vol Perms",type="boolean",priority=1,JSONPath=".spec.volumePermissions"
 // +kubebuilder:printcolumn:name="Image",type="string",priority=1,JSONPath=".spec.image"
 type Valkey struct {
 	metav1.TypeMeta   `json:",inline"`

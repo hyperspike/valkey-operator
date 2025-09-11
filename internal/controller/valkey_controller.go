@@ -112,7 +112,7 @@ var scripts embed.FS
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups="apps",resources=statefulsets;deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
@@ -299,6 +299,35 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				return ctrl.Result{}, err
 			}
 		}
+	}
+	upgrade, err := r.detectUpgrade(ctx, valkey)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if upgrade {
+		r.Recorder.Event(valkey, "Normal", "Upgrade",
+			fmt.Sprintf("Upgrade detected for %s/%s", valkey.Namespace, valkey.Name))
+		/*inProgress, err := r.upgradeInProgress(ctx, valkey)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if !inProgress { */
+		if int(valkey.Spec.Replicas) == 0 {
+			valkey.Spec.Replicas = 1
+			r.Recorder.Event(valkey, "Normal", "Uprgade",
+				fmt.Sprintf("temporarily bumping replicas to 1"))
+			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 1}, r.Client.Update(ctx, valkey)
+		}
+		for i := 0; i < int(valkey.Spec.Shards); i++ {
+			if err := r.upgradeReplica(ctx, valkey, i); err != nil {
+				return ctrl.Result{}, err
+			}
+			if err := r.failOver(ctx, valkey, i); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 1}, nil
+		//}
 	}
 	if err := r.checkState(ctx, valkey, password); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
@@ -1437,8 +1466,11 @@ func (r *ValkeyReconciler) upsertServiceWithId(ctx context.Context, valkey *hype
 	logger.Info("upserting service with id", "shardId", shardId, "id", id)
 
 	l := labels(valkey)
+	m := labels(valkey)
 	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
+	m["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
 	l["hyperspike.io/id"] = id
+	m["hyperspike.io/id"] = id
 	l["hyperspike.io/leader"] = "true"
 	if replica {
 		l["hyperspike.io/leader"] = "false"
@@ -1466,7 +1498,7 @@ func (r *ValkeyReconciler) upsertServiceWithId(ctx context.Context, valkey *hype
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},
-			Selector: l,
+			Selector: m,
 		},
 	}
 	if err := controllerutil.SetControllerReference(valkey, svc, r.Scheme); err != nil {
@@ -2587,8 +2619,11 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 		image = valkey.Spec.Image
 	}
 	l := labels(valkey)
+	m := labels(valkey)
 	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
+	m["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
 	l["hyperspike.io/id"] = id
+	m["hyperspike.io/id"] = id
 	if replica {
 		l["hyperspike.io/leader"] = "false"
 	} else {
@@ -2603,7 +2638,7 @@ func (r *ValkeyReconciler) upsertDeploymentShard(ctx context.Context, valkey *hy
 		Spec: appsv1.DeploymentSpec{
 			Replicas: func(i int32) *int32 { return &i }(int32(1)),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: l,
+				MatchLabels: m,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2979,24 +3014,52 @@ func (r *ValkeyReconciler) replicateShard(ctx context.Context, valkey *hyperv1.V
 			RootCAs:    certpool,
 		}
 	}
-	vClient, err := valkeyClient.NewClient(opt)
-	if err != nil {
-		logger.Error(err, "failed to create valkey client")
-		return err
+	var vClient valkeyClient.Client
+	var err error
+	var tries = 0
+	for {
+		vClient, err = valkeyClient.NewClient(opt)
+		if err == nil {
+			break
+		}
+		logger.Info("failed to create valkey client, trying again " + fmt.Sprint(tries))
+		time.Sleep(time.Second * 1)
+		tries++
+		if tries > 15 {
+			return fmt.Errorf("failed to create valkey client")
+		}
 	}
 	defer vClient.Close()
 
-	masterIp, err := r.getMasterIp(ctx, valkey, shardId)
+	masterNode, err := r.getNode(ctx, valkey, shardId, false)
 	if err != nil {
-		logger.Error(err, "failed to get master ip")
+		logger.Error(err, "failed to get master node")
 		return err
 	}
-	masterId, err := r.getMasterId(ctx, valkey, shardId)
+	masterPod, err := masterNode.pod()
+	if err != nil {
+		logger.Error(err, "failed to get master pod")
+		return err
+	}
+	masterIp := masterPod.Status.PodIP
+	masterConn, err := masterNode.connection()
+	defer masterConn.Close()
+	if err != nil {
+		logger.Error(err, "failed to get master connection")
+		return err
+	}
+	masterId, err := masterConn.Do(ctx, masterConn.B().ClusterMyid().Build()).ToString()
 	if err != nil {
 		logger.Error(err, "failed to get master id")
 		return err
 	}
 
+	myid, err := vClient.Do(ctx, vClient.B().ClusterMyid().Build()).ToString()
+	if err != nil {
+		logger.Error(err, "failed to get my id")
+		return err
+	}
+	logger.Info("my id", "my-id", myid, "master-id", masterId, "master-ip", masterIp)
 	// check if the node is already a replica
 	replicas, err := vClient.Do(ctx, vClient.B().ClusterNodes().Build()).ToString()
 	if err != nil {
@@ -3004,7 +3067,7 @@ func (r *ValkeyReconciler) replicateShard(ctx context.Context, valkey *hyperv1.V
 		return err
 	}
 	for _, line := range strings.Split(replicas, "\n") {
-		if strings.Contains(line, "slave") && strings.Contains(line, node) {
+		if strings.Contains(line, "slave") && strings.Contains(line, myid) {
 			logger.Info("node is already a replica", "node", node)
 			return nil
 		}
@@ -3028,13 +3091,13 @@ func (r *ValkeyReconciler) replicateShard(ctx context.Context, valkey *hyperv1.V
 	return nil
 }
 
-func (r *ValkeyReconciler) removeNode(ctx context.Context, valkey *hyperv1.Valkey, name string) error {
+func (r *ValkeyReconciler) getConnection(ctx context.Context, valkey *hyperv1.Valkey, shardId int, id string) (valkeyClient.Client, error) {
 	logger := log.FromContext(ctx)
 
-	logger.Info("removing node", "id", name)
+	logger.Info("getting connection", "shardId", shardId, "id", id)
 
 	opt := valkeyClient.ClientOption{
-		InitAddress:       []string{valkey.Name + "-0." + valkey.Namespace + ".svc" + ":6379"},
+		InitAddress:       []string{fmt.Sprintf("%s-%d.%s.svc:%d", valkey.Name, shardId, valkey.Namespace, 6379)},
 		ForceSingleClient: true,
 	}
 	if !valkey.Spec.AnonymousAuth {
@@ -3042,22 +3105,22 @@ func (r *ValkeyReconciler) removeNode(ctx context.Context, valkey *hyperv1.Valke
 		opt.Password, err = r.GetPassword(ctx, valkey)
 		if err != nil {
 			logger.Error(err, "failed to get password")
-			return err
+			return nil, err
 		}
 	}
 	if valkey.Spec.TLS {
 		ca, err := r.getCACertificate(ctx, valkey)
 		if err != nil {
 			logger.Error(err, "failed to get ca certificate")
-			return err
+			return nil, err
 		}
 		if ca == "" {
-			return fmt.Errorf("ca certificate not ready")
+			return nil, fmt.Errorf("ca certificate not ready")
 		}
 		certpool, err := x509.SystemCertPool()
 		if err != nil {
 			logger.Error(err, "failed to get system cert pool")
-			return err
+			return nil, err
 		}
 		certpool.AppendCertsFromPEM([]byte(ca))
 		opt.TLSConfig = &tls.Config{
@@ -3068,9 +3131,478 @@ func (r *ValkeyReconciler) removeNode(ctx context.Context, valkey *hyperv1.Valke
 	vClient, err := valkeyClient.NewClient(opt)
 	if err != nil {
 		logger.Error(err, "failed to create valkey client")
+		return nil, err
+	}
+	return vClient, nil
+}
+
+func (r *ValkeyReconciler) detectUpgrade(ctx context.Context, valkey *hyperv1.Valkey) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	logger.Info("detecting upgrade")
+
+	deployments := &appsv1.DeploymentList{}
+	if err := r.List(ctx, deployments, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+		logger.Error(err, "failed to list deployments")
+		return false, err
+	}
+	if len(deployments.Items) == 0 {
+		return false, nil
+	}
+	for _, deployment := range deployments.Items {
+		if deployment.Spec.Template.Spec.Containers[0].Image != valkey.Spec.Image && valkey.Spec.Image != "" {
+			logger.Info("upgrade detected", "old", deployment.Spec.Template.Spec.Containers[0].Image, "new", valkey.Spec.Image)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *ValkeyReconciler) upgradeInProgress(ctx context.Context, valkey *hyperv1.Valkey) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	logger.Info("checking upgrade in progress")
+
+	deployments := &appsv1.DeploymentList{}
+	if err := r.List(ctx, deployments, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+		logger.Error(err, "failed to list deployments")
+		return false, err
+	}
+	if len(deployments.Items) == 0 {
+		return false, nil
+	}
+	var newImage bool = false
+	var oldImage bool = false
+	for _, deployment := range deployments.Items {
+		if deployment.Spec.Template.Spec.Containers[0].Image == valkey.Spec.Image {
+			newImage = true
+		} else {
+			oldImage = true
+		}
+	}
+	if newImage && oldImage {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (r *ValkeyReconciler) upgradeReplica(ctx context.Context, valkey *hyperv1.Valkey, shardId int) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("upgrading")
+
+	deployments, err := r.getDeployments(ctx, valkey, shardId, true)
+	if err != nil {
+		logger.Error(err, "failed to get deployments")
 		return err
 	}
+	numDeployments := len(deployments)
+	for i := 0; i < numDeployments; i++ {
+		// skip if the deployment is already upgraded
+		if deployments[i].Spec.Template.Spec.Containers[0].Image == valkey.Spec.Image {
+			continue
+		}
+		// create new deployment
+		id, err := randString(5, true)
+		if err != nil {
+			return err
+		}
+		if err := r.upsertServiceWithId(ctx, valkey, shardId, id, true); err != nil {
+			return err
+		}
+		if err := r.upsertPVCShard(ctx, valkey, shardId, id); err != nil {
+			return err
+		}
+		if err := r.upsertCertificateShardId(ctx, valkey, shardId, id); err != nil {
+			return err
+		}
+		dep, err := r.upsertDeploymentShard(ctx, valkey, shardId, id, true)
+		if err != nil {
+			return err
+		}
+		logger.Info("creating deployment", "name", dep.Name)
+		if err := r.Create(ctx, dep); err != nil {
+			logger.Error(err, "failed to create deployment", "name", dep.Name)
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Created",
+			fmt.Sprintf("Deployment %s/%s is created", valkey.Namespace, dep.Name))
+
+		// retry several times to get the service ip
+		var ip string
+		for j := 0; j < 5; j++ {
+			ip, err = r.getServiceIps(ctx, valkey, fmt.Sprintf("%s-%s-%d", valkey.Name, id, shardId))
+			if err != nil {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			break
+		}
+		if err != nil {
+			logger.Error(err, "failed to get service ip")
+			return err
+		}
+		if err := r.replicateShard(ctx, valkey, shardId, ip); err != nil {
+			logger.Error(err, "failed to replicate shard")
+			return err
+		}
+
+		// delete old deployment
+		if err := r.deleteDeployment(ctx, valkey, deployments[i].Name); err != nil {
+			logger.Error(err, "failed to delete deployment")
+		}
+		if err := r.deleteService(ctx, valkey, deployments[i].Name); err != nil {
+			logger.Error(err, "failed to delete service")
+		}
+		// this is a bug, this Name will not work
+		node, err := r.getNodeByID(ctx, valkey, deployments[i].Labels["hyperspike.io/id"])
+		if err != nil {
+			logger.Error(err, "failed to get node")
+			return err
+		}
+		pod, err := node.pod()
+		if err != nil {
+			logger.Error(err, "failed to get pod")
+			return err
+		}
+		if err := r.removeNode(ctx, valkey, pod.Name); err != nil {
+			logger.Error(err, "failed to remove node")
+			return err
+		}
+		r.Recorder.Event(valkey, "Normal", "Deleted",
+			fmt.Sprintf("Deployment %s/%s is deleted", valkey.Namespace, deployments[i].Name))
+	}
+
+	return nil
+}
+
+func (r *ValkeyReconciler) failOver(ctx context.Context, valkey *hyperv1.Valkey, shard int) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("failing over", "shard", shard)
+
+	node, err := r.getNode(ctx, valkey, shard, true)
+	if err != nil {
+		logger.Error(err, "failed to get service ip")
+		return err
+	}
+	oldNode, err := r.getNode(ctx, valkey, shard, false)
+	if err != nil {
+		logger.Error(err, "failed to get service ip")
+		return err
+	}
+	oldDeployment, err := oldNode.deployment()
+	if err != nil {
+		logger.Error(err, "failed to get deployment")
+		return err
+	}
+	if oldDeployment.Spec.Template.Spec.Containers[0].Image == valkey.Spec.Image {
+		logger.Info("leader is already up to date, skipping", "shard", shard)
+		return nil
+	}
+	vOld, err := oldNode.connection()
+	defer vOld.Close()
+	if err != nil {
+		logger.Error(err, "failed to create valkey client")
+		return err
+	}
+	if !valkey.Spec.AnonymousAuth {
+		password, err := r.GetPassword(ctx, valkey)
+		if err != nil {
+			logger.Error(err, "failed to get password")
+			return err
+		}
+		if err := vOld.Do(ctx, vOld.B().ConfigSet().ParameterValue().ParameterValue("masterauth", password).Build()).Error(); err != nil {
+			logger.Error(err, "failed to set masterauth")
+			return err
+		}
+	}
+
+	vClient, err := node.connection()
 	defer vClient.Close()
+	if err != nil {
+		logger.Error(err, "failed to create valkey client")
+		return err
+	}
+	if err := vClient.Do(ctx, vClient.B().ClusterFailover().Takeover().Build()).Error(); err != nil {
+		logger.Error(err, "failed to failove", "shard", shard)
+		return err
+	}
+	pod, err := node.pod()
+	if err != nil {
+		logger.Error(err, "failed to get pod")
+		return err
+	}
+	pod.Labels["hyperspike.io/leader"] = "true"
+	if err := r.Update(ctx, pod); err != nil {
+		logger.Error(err, "failed to update pod", "name", pod.Name)
+		return err
+	}
+	r.Recorder.Event(valkey, "Normal", "Updated",
+		fmt.Sprintf("Pod %s/%s is updated", valkey.Namespace, pod.Name))
+	deployment, err := node.deployment()
+	if err != nil {
+		logger.Error(err, "failed to get deployment")
+		return err
+	}
+	deployment.Labels["hyperspike.io/leader"] = "true"
+	deployment.Spec.Template.Labels["hyperspike.io/leader"] = "true"
+	if err := r.Update(ctx, deployment); err != nil {
+		logger.Error(err, "failed to update deployment", "name", deployment.Name)
+		return err
+	}
+	r.Recorder.Event(valkey, "Normal", "Updated",
+		fmt.Sprintf("Deployment %s/%s is updated", valkey.Namespace, deployment.Name))
+	service, err := node.service()
+	if err != nil {
+		logger.Error(err, "failed to get service")
+		return err
+	}
+	service.Labels["hyperspike.io/leader"] = "true"
+	if err := r.Update(ctx, service); err != nil {
+		logger.Error(err, "failed to update service", "name", service.Name)
+		return err
+	}
+	r.Recorder.Event(valkey, "Normal", "Updated",
+		fmt.Sprintf("Service %s/%s is updated", valkey.Namespace, service.Name))
+
+	oldPod, err := oldNode.pod()
+	if err != nil {
+		logger.Error(err, "failed to get pod")
+		return err
+	}
+	oldPod.Labels["hyperspike.io/leader"] = "false"
+	if err := r.Update(ctx, oldPod); err != nil {
+		logger.Error(err, "failed to update pod", "name", oldPod.Name)
+		return err
+	}
+	r.Recorder.Event(valkey, "Normal", "Updated",
+		fmt.Sprintf("Pod %s/%s is updated", valkey.Namespace, oldPod.Name))
+	oldDeployment.Labels["hyperspike.io/leader"] = "false"
+	oldDeployment.Spec.Template.Labels["hyperspike.io/leader"] = "false"
+	if err := r.Update(ctx, oldDeployment); err != nil {
+		logger.Error(err, "failed to update deployment", "name", oldDeployment.Name)
+		return err
+	}
+	r.Recorder.Event(valkey, "Normal", "Updated",
+		fmt.Sprintf("Deployment %s/%s is updated", valkey.Namespace, oldDeployment.Name))
+	oldService, err := oldNode.service()
+	if err != nil {
+		logger.Error(err, "failed to get service")
+		return err
+	}
+	oldService.Labels["hyperspike.io/leader"] = "false"
+	if err := r.Update(ctx, oldService); err != nil {
+		logger.Error(err, "failed to update service", "name", oldService.Name)
+		return err
+	}
+	r.Recorder.Event(valkey, "Normal", "Updated",
+		fmt.Sprintf("Service %s/%s is updated", valkey.Namespace, oldService.Name))
+
+	return nil
+}
+
+type Node struct {
+	IP         string
+	ID         string
+	Replica    bool
+	Shard      int
+	r          *ValkeyReconciler
+	v          *hyperv1.Valkey
+	ctx        context.Context
+	Connection valkeyClient.Client
+}
+
+func (n *Node) service() (*corev1.Service, error) {
+	services := &corev1.ServiceList{}
+	l := labels(n.v)
+	l["hyperspike.io/id"] = n.ID
+	if err := n.r.List(n.ctx, services, client.InNamespace(n.v.Namespace), client.MatchingLabels(l)); err != nil {
+		return nil, err
+	}
+	if len(services.Items) == 0 {
+		return nil, fmt.Errorf("no service found")
+	}
+	return &services.Items[0], nil
+}
+
+func (n *Node) connection() (valkeyClient.Client, error) {
+	if n.Connection != nil {
+		return n.Connection, nil
+	}
+	opt := valkeyClient.ClientOption{
+		InitAddress:       []string{n.IP + ":6379"},
+		ForceSingleClient: true,
+	}
+	if !n.v.Spec.AnonymousAuth {
+		var err error
+		opt.Password, err = n.r.GetPassword(n.ctx, n.v)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if n.v.Spec.TLS {
+		ca, err := n.r.getCACertificate(n.ctx, n.v)
+		if err != nil {
+			return nil, err
+		}
+		if ca == "" {
+			return nil, fmt.Errorf("ca certificate not ready")
+		}
+		certpool, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, err
+		}
+		certpool.AppendCertsFromPEM([]byte(ca))
+		opt.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    certpool,
+		}
+	}
+	vClient, err := valkeyClient.NewClient(opt)
+	if err != nil {
+		return nil, err
+	}
+	n.Connection = vClient
+	return vClient, nil
+}
+
+func (n *Node) pod() (*corev1.Pod, error) {
+	pods := &corev1.PodList{}
+	l := labels(n.v)
+	l["hyperspike.io/id"] = n.ID
+	if err := n.r.List(n.ctx, pods, client.InNamespace(n.v.Namespace), client.MatchingLabels(l)); err != nil {
+		return nil, err
+	}
+	if len(pods.Items) == 0 {
+		return nil, fmt.Errorf("no pod found")
+	}
+	return &pods.Items[0], nil
+}
+
+func (n *Node) deployment() (*appsv1.Deployment, error) {
+	logger := log.FromContext(n.ctx)
+	deployments := &appsv1.DeploymentList{}
+	l := labels(n.v)
+	l["hyperspike.io/id"] = n.ID
+	logger.Info("getting deployment", "labels", l)
+	if err := n.r.List(n.ctx, deployments, client.InNamespace(n.v.Namespace), client.MatchingLabels(l)); err != nil {
+		return nil, err
+	}
+	if len(deployments.Items) == 0 {
+		return nil, fmt.Errorf("no deployment found")
+	}
+	return &deployments.Items[0], nil
+}
+
+func (r *ValkeyReconciler) getServiceIps(ctx context.Context, valkey *hyperv1.Valkey, name string) (string, error) {
+	logger := log.FromContext(ctx)
+
+	logger.Info("getting service ip", "name", name)
+
+	service := &corev1.Service{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: name}, service); err != nil {
+		logger.Error(err, "failed to get service")
+		return "", err
+	}
+	return service.Spec.ClusterIP, nil
+}
+
+func (r *ValkeyReconciler) getNodeByID(ctx context.Context, valkey *hyperv1.Valkey, id string) (*Node, error) {
+	logger := log.FromContext(ctx)
+
+	logger.Info("getting service", "id", id)
+	l := labels(valkey)
+	l["hyperspike.io/id"] = id
+	services := &corev1.ServiceList{}
+	if err := r.List(ctx, services, client.InNamespace(valkey.Namespace), client.MatchingLabels(l)); err != nil {
+		logger.Error(err, "failed to get service")
+		return nil, err
+	}
+	if len(services.Items) == 0 {
+		return nil, fmt.Errorf("no service found")
+	}
+	return &Node{
+		IP:      services.Items[0].Spec.ClusterIP,
+		ID:      id,
+		Replica: services.Items[0].Labels["hyperspike.io/leader"] == "false",
+		r:       r,
+		v:       valkey,
+		ctx:     ctx,
+	}, nil
+}
+
+func (r *ValkeyReconciler) getNode(ctx context.Context, valkey *hyperv1.Valkey, shardId int, replica bool) (*Node, error) {
+	logger := log.FromContext(ctx)
+
+	logger.Info("getting service", "shardId", shardId, "replica", replica)
+
+	services := &corev1.ServiceList{}
+	l := labels(valkey)
+	l["hyperspike.io/shard"] = fmt.Sprintf("%d", shardId)
+	l["hyperspike.io/leader"] = "true"
+	if replica {
+		l["hyperspike.io/leader"] = "false"
+	}
+	if err := r.List(ctx, services, client.InNamespace(valkey.Namespace), client.MatchingLabels(l)); err != nil {
+		logger.Error(err, "failed to get service")
+		return nil, err
+	}
+	if len(services.Items) == 0 {
+		return nil, fmt.Errorf("no service found")
+	}
+	logger.Info("found node", "ip", services.Items[0].Spec.ClusterIP, "id", services.Items[0].Labels["hyperspike.io/id"])
+	if !replica {
+		var svc corev1.Service
+		found := false
+		for _, svc = range services.Items {
+			for k, _ := range svc.Labels {
+				if k == "hyperspike.io/id" {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if found {
+			return &Node{
+				IP:      svc.Spec.ClusterIP,
+				ID:      svc.Labels["hyperspike.io/id"],
+				Replica: replica,
+				Shard:   shardId,
+				r:       r,
+				v:       valkey,
+				ctx:     ctx,
+			}, nil
+		} else {
+			logger.Info("service does not have id label", "name", svc.Name)
+			return nil, fmt.Errorf("service does not have id label")
+		}
+	}
+	return &Node{
+		IP:      services.Items[0].Spec.ClusterIP,
+		ID:      services.Items[0].Labels["hyperspike.io/id"],
+		Replica: replica,
+		Shard:   shardId,
+		r:       r,
+		v:       valkey,
+		ctx:     ctx,
+	}, nil
+}
+
+func (r *ValkeyReconciler) removeNode(ctx context.Context, valkey *hyperv1.Valkey, name string) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("removing node", "id", name)
+
+	vClient, err := r.getConnection(ctx, valkey, 0, name)
+	defer vClient.Close()
+	if err != nil {
+		logger.Error(err, "failed to get connection")
+		return err
+	}
 
 	nodes, err := vClient.Do(ctx, vClient.B().ClusterNodes().Build()).ToString()
 	if err != nil {

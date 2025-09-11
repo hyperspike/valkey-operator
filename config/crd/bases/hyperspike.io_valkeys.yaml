@@ -30,7 +30,7 @@ spec:
       name: Replicas
       type: integer
     - jsonPath: .spec.volumePermissions
-      name: Volumme Permissions
+      name: Vol Perms
       priority: 1
       type: boolean
     - jsonPath: .spec.image
