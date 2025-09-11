@@ -1997,7 +1997,7 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 			pv.ObjectMeta.Labels = labels(valkey) //nolint:staticcheck
 		} else {
 			for k, v := range labels(valkey) {
-				pv.ObjectMeta.Labels[k] = v
+				pv.ObjectMeta.Labels[k] = v //nolint:staticcheck
 			}
 		}
 		if len(pv.Spec.AccessModes) == 0 {
