@@ -739,8 +739,8 @@ func (r *ValkeyReconciler) fetchExternalIPs(ctx context.Context, valkey *hyperv1
 	}
 	for _, svc := range svcs.Items {
 		if svc.Labels["app.kubernetes.io/component"] == "valkey-external" && svc.Labels["app.kubernetes.io/instance"] == valkey.Name {
-			podName := strings.Replace(svc.Name, "-external", "", -1)
-			if svc.Status.LoadBalancer.Ingress == nil || len(svc.Status.LoadBalancer.Ingress) == 0 { // nolint:gosimple
+			podName := strings.ReplaceAll(svc.Name, "-external", "", -1)
+			if len(svc.Status.LoadBalancer.Ingress) == 0 {
 				logger.Info("external ip is empty")
 				return nil, nil
 			}
@@ -1992,9 +1992,9 @@ func generatePVC(valkey *hyperv1.Valkey) corev1.PersistentVolumeClaim {
 	}
 	if valkey.Spec.Storage != nil {
 		pv = *valkey.Spec.Storage
-		pv.ObjectMeta.Name = "valkey-data"
-		if pv.ObjectMeta.Labels == nil {
-			pv.ObjectMeta.Labels = labels(valkey)
+		pv.ObjectMeta.Name = "valkey-data" //nolint:staticcheck
+		if pv.ObjectMeta.Labels == nil {   //nolint:staticcheck
+			pv.ObjectMeta.Labels = labels(valkey) //nolint:staticcheck
 		} else {
 			for k, v := range labels(valkey) {
 				pv.ObjectMeta.Labels[k] = v
