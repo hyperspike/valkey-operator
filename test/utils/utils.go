@@ -21,7 +21,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	//nolint:golint,revive,staticcheck
+
+	"github.com/onsi/ginkgo/v2"
 )
 
 const (
@@ -34,7 +35,7 @@ const (
 )
 
 func warnError(err error) {
-	_, _ = fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
+	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "warning: %v\n", err)
 }
 
 // InstallPrometheusOperator installs the prometheus Operator to be used to export the enabled metrics.
@@ -51,12 +52,12 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 	cmd.Dir = dir
 
 	if err := os.Chdir(cmd.Dir); err != nil {
-		_, _ = fmt.Fprintf(GinkgoWriter, "chdir dir: %s\n", err)
+		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "chdir dir: %s\n", err)
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
-	_, _ = fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
+	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "running: %s\n", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return output, fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
