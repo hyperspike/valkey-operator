@@ -10,11 +10,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Setup Go ${{ matrix.go-version }}
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: 1.23
+        go-version: 1.24
     # You can test your matrix by printing the current Go version
     - name: Display Go version
       run: go version
@@ -23,11 +23,11 @@ jobs:
   build-operator-container:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Setup Go ${{ matrix.go-version }}
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: 1.23
+        go-version: 1.24
     - name: Build it
       run: make V=1
     - name: Extract metadata (Operator tags, labels) for Docker
