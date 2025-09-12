@@ -4,7 +4,7 @@ var (
 	// Default Settings
 	DefaultSidecarImage string
 	DefaultValkeyImage  string
-	DefaultNodes        int = 3
+	DefaultNodes        int32 = 3
 )
 
 type Config struct {
@@ -13,7 +13,7 @@ type Config struct {
 	// The default clusterwide valkey image to use
 	ValkeyImage string `json:"valkeyImage"`
 	// The default number of nodes to use
-	Nodes int `json:"nodes"`
+	Nodes int32 `json:"nodes"`
 }
 
 func Defaults() *Config {

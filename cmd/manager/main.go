@@ -191,7 +191,8 @@ func main() {
 			config.ValkeyImage = v
 		}
 		if k == "nodes" && v != "" {
-			config.Nodes, _ = strconv.Atoi(v)
+			n, _ := strconv.ParseInt(v, 10, 32)
+			config.Nodes = int32(n)
 		}
 	}
 
