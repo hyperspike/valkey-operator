@@ -1,9 +1,9 @@
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.3
+  creationTimestamp: null
   name: valkeys.hyperspike.io
 spec:
   group: hyperspike.io
@@ -80,15 +80,6 @@ spec:
                 default: cluster.local
                 description: Cluster Domain - used for DNS
                 type: string
-              clusterPreferredEndpointType:
-                default: ip
-                description: Which endpoint is shown as the preferred endpoint valid
-                  values are 'ip', 'hostname', or 'unknown-endpoint'.
-                enum:
-                - ip
-                - hostname
-                - unknown-endpoint
-                type: string
               exporterImage:
                 description: Exporter Image to use
                 type: string
@@ -154,7 +145,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This field depends on the
+                              This is an alpha field and requires enabling the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -205,8 +196,6 @@ spec:
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
                         type: object
-                    required:
-                    - replicas
                     type: object
                   type:
                     default: Proxy
@@ -218,18 +207,10 @@ spec:
                     - LoadBalancer
                     - Proxy
                     type: string
-                required:
-                - enabled
-                - type
                 type: object
               image:
                 description: Image to use
                 type: string
-              nodeSelector:
-                additionalProperties:
-                  type: string
-                description: Node Selector
-                type: object
               nodes:
                 default: 3
                 description: Number of shards
@@ -258,7 +239,7 @@ spec:
                       Claims lists the names of resources, defined in spec.resourceClaims,
                       that are used by this container.
 
-                      This field depends on the
+                      This is an alpha field and requires enabling the
                       DynamicResourceAllocation feature gate.
 
                       This field is immutable. It can only be set for containers.
@@ -534,13 +515,15 @@ spec:
                           volumeAttributesClassName may be used to set the VolumeAttributesClass used by this claim.
                           If specified, the CSI driver will create or update the volume with the attributes defined
                           in the corresponding VolumeAttributesClass. This has a different purpose than storageClassName,
-                          it can be changed after the claim is created. An empty string or nil value indicates that no
-                          VolumeAttributesClass will be applied to the claim. If the claim enters an Infeasible error state,
-                          this field can be reset to its previous value (including nil) to cancel the modification.
+                          it can be changed after the claim is created. An empty string value means that no VolumeAttributesClass
+                          will be applied to the claim but it's not allowed to reset this field to empty string once it is set.
+                          If unspecified and the PersistentVolumeClaim is unbound, the default VolumeAttributesClass
+                          will be set by the persistentvolume controller if it exists.
                           If the resource referred to by volumeAttributesClass does not exist, this PersistentVolumeClaim will be
                           set to a Pending state, as reflected by the modifyVolumeStatus field, until such as a resource
                           exists.
                           More info: https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/
+                          (Beta) Using this field requires the VolumeAttributesClass feature gate to be enabled (off by default).
                         type: string
                       volumeMode:
                         description: |-
@@ -700,11 +683,13 @@ spec:
                         description: |-
                           currentVolumeAttributesClassName is the current name of the VolumeAttributesClass the PVC is using.
                           When unset, there is no VolumeAttributeClass applied to this PersistentVolumeClaim
+                          This is a beta field and requires enabling VolumeAttributesClass feature (off by default).
                         type: string
                       modifyVolumeStatus:
                         description: |-
                           ModifyVolumeStatus represents the status object of ControllerModifyVolume operation.
                           When this is unset, there is no ModifyVolume operation being attempted.
+                          This is a beta field and requires enabling VolumeAttributesClass feature (off by default).
                         properties:
                           status:
                             description: "status is the status of the ControllerModifyVolume
@@ -737,55 +722,11 @@ spec:
                 default: false
                 description: TLS Support
                 type: boolean
-              tolerations:
-                description: Tolerations
-                items:
-                  description: |-
-                    The pod this Toleration is attached to tolerates any taint that matches
-                    the triple <key,value,effect> using the matching operator <operator>.
-                  properties:
-                    effect:
-                      description: |-
-                        Effect indicates the taint effect to match. Empty means match all taint effects.
-                        When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
-                      type: string
-                    key:
-                      description: |-
-                        Key is the taint key that the toleration applies to. Empty means match all taint keys.
-                        If the key is empty, operator must be Exists; this combination means to match all values and all keys.
-                      type: string
-                    operator:
-                      description: |-
-                        Operator represents a key's relationship to the value.
-                        Valid operators are Exists and Equal. Defaults to Equal.
-                        Exists is equivalent to wildcard for value, so that a pod can
-                        tolerate all taints of a particular category.
-                      type: string
-                    tolerationSeconds:
-                      description: |-
-                        TolerationSeconds represents the period of time the toleration (which must be
-                        of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
-                        it is not set, which means tolerate the taint forever (do not evict). Zero and
-                        negative values will be treated as 0 (evict immediately) by the system.
-                      format: int64
-                      type: integer
-                    value:
-                      description: |-
-                        Value is the taint value the toleration matches to.
-                        If the operator is Exists, the value should be empty, otherwise just a regular string.
-                      type: string
-                  type: object
-                type: array
               volumePermissions:
                 default: false
                 description: Turn on an init container to set permissions on the persistent
                   volume
                 type: boolean
-            required:
-            - anonymousAuth
-            - clusterDomain
-            - prometheus
-            - volumePermissions
             type: object
           status:
             description: ValkeyStatus defines the observed state of Valkey
@@ -858,3 +799,9 @@ spec:
     storage: true
     subresources:
       status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null
