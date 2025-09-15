@@ -1639,7 +1639,7 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 		return err
 	}
 	if err := r.Create(ctx, sa); err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			// Get existing resource
 			existingSA := &corev1.ServiceAccount{}
 			if err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, existingSA); err != nil {
