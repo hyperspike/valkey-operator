@@ -18,7 +18,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 data:
   nodes: "3"
-  valkeyImage: "ghcr.io/hyperspike/valkey:8.0.2"
+  valkeyImage: "ghcr.io/hyperspike/valkey:8.1.3"
   exporterImage: "ghcr.io/hyperspike/valkey-sidecar:v0.0.51"
 ---
 apiVersion: apps/v1
