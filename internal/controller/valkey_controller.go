@@ -1640,8 +1640,43 @@ func (r *ValkeyReconciler) upsertServiceAccount(ctx context.Context, valkey *hyp
 	}
 	if err := r.Create(ctx, sa); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			if err := r.Update(ctx, sa); err != nil {
-				logger.Error(err, "failed to update service account")
+			// Get existing resource
+			existingSA := &corev1.ServiceAccount{}
+			if err := r.Get(ctx, types.NamespacedName{Namespace: valkey.Namespace, Name: valkey.Name}, existingSA); err != nil {
+				logger.Error(err, "failed to get existing service account")
+				return err
+			}
+
+			// Check if changes are needed
+			desiredLabels := labels(valkey)
+			labelsChanged := !labelsContains(existingSA.Labels, desiredLabels)
+			hasControllerRef := hasValkeyControllerReferences(existingSA.OwnerReferences, sa.OwnerReferences)
+
+			// Skip patch if no changes needed
+			if !labelsChanged && hasControllerRef {
+				logger.Info("service account already up to date, skipping patch")
+				return nil
+			}
+
+			// Create patch only if changes are needed
+			patch := client.MergeFrom(existingSA.DeepCopy())
+
+			// Update labels if changed
+			if labelsChanged {
+				existingSA.Labels = mergeLabels(existingSA.Labels, desiredLabels)
+			}
+
+			// Add controller reference if missing
+			if !hasControllerRef {
+				if err := controllerutil.SetControllerReference(valkey, existingSA, r.Scheme); err != nil {
+					logger.Error(err, "failed to set controller reference")
+					return err
+				}
+			}
+
+			// Apply patch
+			if err := r.Patch(ctx, existingSA, patch); err != nil {
+				logger.Error(err, "failed to patch service account")
 				return err
 			}
 		} else {
@@ -1660,6 +1695,49 @@ func removePort(addr string) string {
 		return strings.Split(addr, ":")[0]
 	}
 	return addr
+}
+
+func labelsContains(existing, desired map[string]string) bool {
+	for k, v := range desired {
+		if existing[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeLabels(existing, desired map[string]string) map[string]string {
+	if existing == nil {
+		existing = make(map[string]string)
+	}
+	for k, v := range desired {
+		existing[k] = v
+	}
+	return existing
+}
+
+func hasValkeyControllerReferences(ownerRefs []metav1.OwnerReference, valkeyRefs []metav1.OwnerReference) bool {
+	for _, valkeyRef := range valkeyRefs {
+		if !hasValkeyControllerReference(ownerRefs, valkeyRef) {
+			return false
+		}
+	}
+	return true
+}
+
+// Compare the owner references of the Valkey resource with the provided reference
+// to determine if the Valkey controller is already set as an owner.
+// This method does not check for the controller field, as it is not set by default and may modified by other controllers.
+func hasValkeyControllerReference(ownerRefs []metav1.OwnerReference, valkeyRef metav1.OwnerReference) bool {
+	for _, ref := range ownerRefs {
+		if ref.APIVersion == valkeyRef.APIVersion &&
+			ref.Kind == valkeyRef.Kind &&
+			ref.Name == valkeyRef.Name {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *ValkeyReconciler) balanceNodes(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint: gocyclo
