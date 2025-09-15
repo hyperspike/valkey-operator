@@ -4,12 +4,19 @@ metadata:
   labels:
     app.kubernetes.io/name: valkey-operator
     app.kubernetes.io/managed-by: kustomize
-  name: keyval
+  name: vk2
 spec:
-  nodes: 1
+  nodes: 3
   volumePermissions: true
-  prometheus: true
+  prometheus: false
   tls: true
   certIssuer: selfsigned
   prometheusLabels:
     prometheus: prometheus
+  storage:
+    spec:
+      resources:
+        requests:
+          storage: 2Gi
+      accessModes:
+        - ReadWriteOnce
