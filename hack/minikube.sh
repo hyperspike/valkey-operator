@@ -57,7 +57,6 @@ data:
 		--set cluster.name=$name \
 		--set cluster.id=$clusterid \
 		--set externalIPs.enabled=true \
-		--set enableCiliumEndpointSlice=true \
 		--set ipam.operator.clusterPoolIPv4PodCIDRList=$podcidr  \
 		--set ipv4NativeRoutingCIDR=10.0.0.0/8 \
 		--set routingMode="native" \
@@ -86,11 +85,11 @@ data:
 		--set bgpControlPlane.enabled=true \
 		--set endpointRoutes.enabled=true \
 		--set nodePort.enabled=true \
-		--set authentication.enabled=true \
-		--set authentication.mutual.spire.enabled=true \
-		--set authentication.mutual.spire.install.enabled=true \
-		--set authentication.mutual.spire.serverAddress=spire-server.cilium-spire.svc.cluster.$name:8081 \
 		--set k8sServicePort=8443 >> .cni-$name.yaml
+		#--set authentication.enabled=true \
+		#--set authentication.mutual.spire.enabled=true \
+		#--set authentication.mutual.spire.install.enabled=true \
+		#--set authentication.mutual.spire.serverAddress=spire-server.cilium-spire.svc.cluster.$name:8081 \
 		#--set tunnel=disabled \
 		#--set tunnelProtocol="" \
 		#--set endpointStatus.enabled=true \
@@ -128,7 +127,7 @@ bootcluster_macos() {
 
 addons() {
 	kubectl delete pod -l k8s-app=kube-dns -n kube-system
-	minikube addons enable registry -p north
+	minikube addons enable registry -p north --images='Registry=docker.io/registry:2.8.3,KubeRegistryProxy=gcr.io/k8s-minikube/kube-registry-proxy:0.0.9'
 	# use the addon, but through a tunnel
 	#minikube addons enable ingress  -p north
 	#kubectl get svc -n ingress-nginx ingress-nginx-controller  -o yaml > .ingress.yaml
