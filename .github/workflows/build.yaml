@@ -6,6 +6,9 @@ on:
 env:
   REGISTRY: ghcr.io
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
