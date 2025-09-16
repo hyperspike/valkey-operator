@@ -67,6 +67,10 @@ type ValkeySpec struct {
 	// +optional
 	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
 
+	// ServiceMonitor Enabled
+	// +kubebuilder:default:=false
+	ServiceMonitor bool `json:"serviceMonitor"`
+
 	// Cluster Domain - used for DNS
 	// +kubebuilder:default:=cluster.local
 	ClusterDomain string `json:"clusterDomain"`

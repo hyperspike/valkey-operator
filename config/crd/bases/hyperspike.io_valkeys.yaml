@@ -309,6 +309,10 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              serviceMonitor:
+                default: false
+                description: ServiceMonitor Enabled
+                type: boolean
               servicePassword:
                 description: Service Password
                 properties:
@@ -785,6 +789,7 @@ spec:
             - anonymousAuth
             - clusterDomain
             - prometheus
+            - serviceMonitor
             - volumePermissions
             type: object
           status:

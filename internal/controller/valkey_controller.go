@@ -155,7 +155,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err = r.upsertServiceAccount(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
 	}
-	if valkey.Spec.Prometheus {
+	if valkey.Spec.ServiceMonitor {
 		if err = r.upsertServiceMonitor(ctx, valkey); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -2590,7 +2590,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 			Value: "yes",
 		})
 	}
-	if valkey.Spec.Prometheus {
+	if valkey.Spec.Prometheus || valkey.Spec.ServiceMonitor {
 		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
 	}
 	if err := controllerutil.SetControllerReference(valkey, sts, r.Scheme); err != nil {
@@ -2625,7 +2625,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 		sts.Spec.Template.Spec.Containers[0].Env[1].Value = getNodeNames(valkey)
 		updateReasons = append(updateReasons, "replicas")
 	}
-	if valkey.Spec.Prometheus && len(existingSts.Spec.Template.Spec.Containers) == 1 {
+	if (valkey.Spec.Prometheus || valkey.Spec.ServiceMonitor) && len(existingSts.Spec.Template.Spec.Containers) == 1 {
 		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, r.exporter(valkey))
 		updateReasons = append(updateReasons, "exporter")
 	}
@@ -2669,7 +2669,7 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 	if valkey.Spec.ExporterImage != "" {
 		exporterImage = valkey.Spec.ExporterImage
 	}
-	if valkey.Spec.Prometheus && existingSts.Spec.Template.Spec.Containers[1].Image != exporterImage {
+	if (valkey.Spec.Prometheus || valkey.Spec.ServiceMonitor) && existingSts.Spec.Template.Spec.Containers[1].Image != exporterImage {
 		sts.Spec.Template.Spec.Containers[1].Image = exporterImage
 		if err := r.Update(ctx, sts); err != nil {
 			logger.Error(err, "failed to update statefulset exporter image")
