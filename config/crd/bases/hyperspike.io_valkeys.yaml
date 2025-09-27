@@ -64,7 +64,13 @@ spec:
             properties:
               anonymousAuth:
                 default: false
-                description: Anonymous Auth
+                description: |-
+                  Anonymous Auth.
+
+                  If true, clients can login without providing a password. If
+                  false, the the operator will configure the valkey server to use a password. It
+                  will either create a Secret holding the password or, if ServicePassword is set,
+                  use an existing secret.
                 type: boolean
               certIssuer:
                 description: Certificate Issuer
@@ -232,7 +238,7 @@ spec:
                 type: object
               nodes:
                 default: 3
-                description: Number of shards
+                description: Number of shards. Each node is a primary
                 format: int32
                 type: integer
               prometheus:
@@ -246,7 +252,11 @@ spec:
                 type: object
               replicas:
                 default: 0
-                description: Number of replicas
+                description: |-
+                  Number of replicas for each node.
+
+                  Note: This field currently creates extra primary nodes.
+                  Follow  https://github.com/hyperspike/valkey-operator/issues/186 for details
                 format: int32
                 type: integer
               resources:
@@ -311,10 +321,21 @@ spec:
                 type: object
               serviceMonitor:
                 default: false
-                description: ServiceMonitor Enabled
+                description: |-
+                  ServiceMonitor Enabled. The service monitor is a custom resource which tells
+                  other Prometheus components how to scrape metrics from the valkey cluster
                 type: boolean
               servicePassword:
-                description: Service Password
+                description: |-
+                  Service Password is a SecretKeySelector that points to a data key in a Secret. Look for
+                  SecretKeySelector in [Kubernetes Pod Documentation] for details
+
+                  This field is optional. If ServicePassword is not set and
+                  [ValkeySpec.AnonymousAuth] is false, then the operator will create a secret
+                  in with the same name and  namespace as the custom resource, with a "password" data key
+                  and a random 16-character password value.
+
+                  https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables
                 properties:
                   key:
                     description: The key of the secret to select from.  Must be a
@@ -337,7 +358,9 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               storage:
-                description: Persistent volume claim
+                description: |-
+                  Persistent volume claim. The kind and metadata can be omitted, but the spec
+                  is necessary.
                 properties:
                   apiVersion:
                     description: |-
