@@ -35,11 +35,15 @@ type ValkeySpec struct {
 	// Exporter Image to use
 	ExporterImage string `json:"exporterImage,omitempty"`
 
-	// Number of shards
+	// Number of shards. Each node is a primary
 	// +kubebuilder:default:=3
 	Shards int32 `json:"nodes,omitempty"`
 
-	// Number of replicas
+	// Number of replicas for each node.
+	//
+	// Note: This field currently creates extra primary nodes.
+	// Follow  https://github.com/hyperspike/valkey-operator/issues/186 for details
+	//
 	// +kubebuilder:default:=0
 	Replicas int32 `json:"replicas,omitempty"`
 
@@ -67,7 +71,8 @@ type ValkeySpec struct {
 	// +optional
 	PrometheusLabels map[string]string `json:"prometheusLabels,omitempty"`
 
-	// ServiceMonitor Enabled
+	// ServiceMonitor Enabled. The service monitor is a custom resource which tells
+	// other Prometheus components how to scrape metrics from the valkey cluster
 	// +kubebuilder:default:=false
 	ServiceMonitor bool `json:"serviceMonitor"`
 
@@ -75,7 +80,8 @@ type ValkeySpec struct {
 	// +kubebuilder:default:=cluster.local
 	ClusterDomain string `json:"clusterDomain"`
 
-	// Persistent volume claim
+	// Persistent volume claim. The kind and metadata can be omitted, but the spec
+	// is necessary.
 	// +optional
 	Storage *corev1.PersistentVolumeClaim `json:"storage,omitempty"`
 
@@ -87,11 +93,25 @@ type ValkeySpec struct {
 	// +optional
 	ExternalAccess *ExternalAccess `json:"externalAccess,omitempty"`
 
-	// Anonymous Auth
+	// Anonymous Auth.
+	//
+	// If true, clients can login without providing a password. If
+	// false, the the operator will configure the valkey server to use a password. It
+	// will either create a Secret holding the password or, if ServicePassword is set,
+	// use an existing secret.
+	//
 	// +kubebuilder:default:=false
 	AnonymousAuth bool `json:"anonymousAuth"`
 
-	// Service Password
+	// Service Password is a SecretKeySelector that points to a data key in a Secret. Look for
+	// SecretKeySelector in [Kubernetes Pod Documentation] for details
+	//
+	// This field is optional. If ServicePassword is not set and
+	// [ValkeySpec.AnonymousAuth] is false, then the operator will create a secret
+	// in with the same name and  namespace as the custom resource, with a "password" data key
+	// and a random 16-character password value.
+	//
+	// https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables
 	// +optional
 	ServicePassword *corev1.SecretKeySelector `json:"servicePassword,omitempty"`
 
