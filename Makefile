@@ -35,8 +35,8 @@ SHELL = /usr/bin/env bash -o pipefail
 
 K8S_VERSION ?= 1.33.4
 ENVTEST_K8S_VERSION = $(K8S_VERSION)
-CILIUM_VERSION ?= 1.18.1
-VALKEY_VERSION ?= 8.1.3
+CILIUM_VERSION ?= 1.18.2
+VALKEY_VERSION ?= 8.1.4
 
 V ?= 0
 ifeq ($(V), 1)
