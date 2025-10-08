@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/cert-manager/cert-manager v1.18.2
 	github.com/google/go-cmp v0.7.0
-	github.com/oliver006/redis_exporter v1.77.0
+	github.com/oliver006/redis_exporter v1.78.0
 	github.com/onsi/ginkgo/v2 v2.26.0
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.85.0
