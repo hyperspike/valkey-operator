@@ -6,11 +6,12 @@ Provision [valkey](https://valkey.io) (redis) clusters
 
 This operator creates valkey clusters and makes them available to other services on the k8s cluster
 
-See the following link for more information on avialable Custom Resource Options: [https://doc.crds.dev/github.com/hyperspike/valkey-operator](https://doc.crds.dev/github.com/hyperspike/valkey-operator)
+See the following link for more information on available Custom Resource Options: [https://doc.crds.dev/github.com/hyperspike/valkey-operator](https://doc.crds.dev/github.com/hyperspike/valkey-operator)
 
 ## Getting Started
 
 ### Prerequisites
+
 - go version v1.22.0+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
@@ -19,22 +20,22 @@ See the following link for more information on avialable Custom Resource Options
 ### Quick Start
 
 Deploy kubernetes locally using minikube, and install the controller:
+
 ```sh
 make quickstart
 ```
 
 and optionally, turn on TLS and Prometheus:
+
 ```sh
 make quickstart TLS=1 PROMETHEUS=1
 ```
-
 
 ### To Uninstall
 
 ```sh
 make minikube-delete
 ```
-
 
 ## Project Distribution
 
@@ -68,18 +69,23 @@ cosign verify ghcr.io/hyperspike/valkey-operator:$LATEST  --certificate-oidc-iss
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
 
 Spool up a local cluster:
+
 ```sh
 make minikube
 ```
 
 Proxy to the registry on the local cluster:
+
 ```sh
 make registry-proxy
 ```
 
 And deploy the operator:
+
 ```sh
-TAG=1; make docker-build IMG=localhost:5000/controller:$TAG; docker push localhost:5000/controller:$TAG ; make IMG=localhost:5000/controller:$TAG build-installer  ; kubectl apply -f dist/install.yaml
+export REGISTRY=localhost:5000; export VERSION=1; \
+    make docker-build; make docker-push; \
+    make build-installer; kubectl apply -f dist/install.yaml
 ```
 
 ## License
@@ -97,4 +103,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
