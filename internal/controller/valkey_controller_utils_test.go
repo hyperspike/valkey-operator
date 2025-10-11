@@ -45,6 +45,14 @@ func TestLabels(t *testing.T) {
 	if result["app.kubernetes.io/instance"] != "test-resource" {
 		t.Errorf("Expected %v, got %v", "test-resource", result["app.kubernetes.io/instance"])
 	}
+	result["app.kubernetes.io/component"] = Metrics
+	result2 := labels(valkey)
+	if result["app.kubernetes.io/component"] != "metrics" {
+		t.Errorf("Expected %v, got %v", "metrics", result["app.kubernetes.io/component"])
+	}
+	if result2["app.kubernetes.io/component"] != "valkey" {
+		t.Errorf("Expected %v, got %v", "valkey", result["app.kubernetes.io/component"])
+	}
 }
 
 func TestAnnotations(t *testing.T) {

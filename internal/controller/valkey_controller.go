@@ -25,6 +25,7 @@ import (
 	"embed"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"net"
 	"os"
@@ -261,7 +262,7 @@ func (r *ValkeyReconciler) validateValkeySpec(valkey *hyperv1.Valkey) error {
 }
 
 func labels(valkey *hyperv1.Valkey) map[string]string {
-	l := valkey.Labels
+	l := maps.Clone(valkey.Labels)
 	l["app.kubernetes.io/name"] = Valkey
 	l["app.kubernetes.io/instance"] = valkey.Name
 	l["app.kubernetes.io/component"] = Valkey
