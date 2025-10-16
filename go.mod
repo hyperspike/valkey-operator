@@ -3,7 +3,7 @@ module hyperspike.io/valkey-operator
 go 1.25.0
 
 require (
-	github.com/cert-manager/cert-manager v1.19.0
+	github.com/cert-manager/cert-manager v1.19.1
 	github.com/google/go-cmp v0.7.0
 	github.com/oliver006/redis_exporter v1.78.0
 	github.com/onsi/ginkgo/v2 v2.26.0
