@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/cert-manager/cert-manager v1.19.1
 	github.com/google/go-cmp v0.7.0
-	github.com/oliver006/redis_exporter v1.78.0
+	github.com/oliver006/redis_exporter v1.79.0
 	github.com/onsi/ginkgo/v2 v2.26.0
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.86.1
@@ -36,7 +36,7 @@ require (
 	github.com/go-openapi/swag/jsonname v0.25.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/gomodule/redigo v1.9.2 // indirect
+	github.com/gomodule/redigo v1.9.3 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
