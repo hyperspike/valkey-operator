@@ -95,6 +95,14 @@ spec:
                 - hostname
                 - unknown-endpoint
                 type: string
+              dontManageSecurityContextIds:
+                default: false
+                description: |-
+                  DontManageSecurityContextIds prevents the operator from setting RunAsUser and RunAsGroup.
+                  When true, RunAsUser and RunAsGroup will not be set in the pod security context,
+                  allowing the platform (e.g., OpenShift) to assign them automatically. When false (default),
+                  they are set to 1001.
+                type: boolean
               exporterImage:
                 description: Exporter Image to use
                 type: string

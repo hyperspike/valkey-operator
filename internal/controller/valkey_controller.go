@@ -2100,8 +2100,8 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Privileged:             func(b bool) *bool { return &b }(false),
 			ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
 			RunAsNonRoot:           func(b bool) *bool { return &b }(true),
-			RunAsUser:              func(i int64) *int64 { return &i }(1001),
-			RunAsGroup:             func(i int64) *int64 { return &i }(1001),
+			RunAsUser:              getRunAsUser(valkey),
+			RunAsGroup:             getRunAsGroup(valkey),
 			SELinuxOptions:         &corev1.SELinuxOptions{},
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: "RuntimeDefault",
@@ -2254,6 +2254,22 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 	}
 }
 
+func getRunAsUser(valkey *hyperv1.Valkey) *int64 {
+	if valkey.Spec.DontManageSecurityContextIds {
+		return nil
+	}
+	// Default to 1001
+	return func(i int64) *int64 { return &i }(1001)
+}
+
+func getRunAsGroup(valkey *hyperv1.Valkey) *int64 {
+	if valkey.Spec.DontManageSecurityContextIds {
+		return nil
+	}
+	// Default to 1001
+	return func(i int64) *int64 { return &i }(1001)
+}
+
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
 	logger := log.FromContext(ctx)
 
@@ -2330,8 +2346,8 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 								Privileged:             func(b bool) *bool { return &b }(false),
 								ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
 								RunAsNonRoot:           func(b bool) *bool { return &b }(true),
-								RunAsUser:              func(i int64) *int64 { return &i }(1001),
-								RunAsGroup:             func(i int64) *int64 { return &i }(1001),
+								RunAsUser:              getRunAsUser(valkey),
+								RunAsGroup:             getRunAsGroup(valkey),
 								SELinuxOptions:         &corev1.SELinuxOptions{},
 								SeccompProfile: &corev1.SeccompProfile{
 									Type: "RuntimeDefault",

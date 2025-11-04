@@ -128,6 +128,14 @@ type ValkeySpec struct {
 	// +kubebuilder:validation:Enum=ip;hostname;unknown-endpoint
 	// +optional
 	ClusterPreferredEndpointType string `json:"clusterPreferredEndpointType,omitempty"`
+
+	// DontManageSecurityContextIds prevents the operator from setting RunAsUser and RunAsGroup.
+	// When true, RunAsUser and RunAsGroup will not be set in the pod security context,
+	// allowing the platform (e.g., OpenShift) to assign them automatically. When false (default),
+	// they are set to 1001.
+	// +kubebuilder:default:=false
+	// +optional
+	DontManageSecurityContextIds bool `json:"dontManageSecurityContextIds,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration
