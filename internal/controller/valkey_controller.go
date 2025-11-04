@@ -2270,10 +2270,18 @@ func getRunAsGroup(valkey *hyperv1.Valkey) *int64 {
 	return func(i int64) *int64 { return &i }(1001)
 }
 
+func getFSGroup(valkey *hyperv1.Valkey) *int64 {
+	if valkey.Spec.DontManageSecurityContextIds {
+		return nil
+	}
+	// Default to 1001
+	return func(i int64) *int64 { return &i }(1001)
+}
+
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting statefulset")
+	logger.Info("upserting statefulset", "dontManageSecurityContextIds", valkey.Spec.DontManageSecurityContextIds)
 	tls := "no"
 	endpointType := "ip"
 	if valkey.Spec.TLS {
@@ -2310,7 +2318,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 					EnableServiceLinks: func(b bool) *bool { return &b }(false),
 					HostNetwork:        false,
 					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup:             func(i int64) *int64 { return &i }(1001),
+						RunAsUser:           getRunAsUser(valkey),
+						RunAsGroup:          getRunAsGroup(valkey),
+						FSGroup:             getFSGroup(valkey),
 						FSGroupChangePolicy: func(s corev1.PodFSGroupChangePolicy) *corev1.PodFSGroupChangePolicy { return &s }(corev1.FSGroupChangeAlways),
 						SupplementalGroups:  []int64{},
 						Sysctls:             []corev1.Sysctl{},
