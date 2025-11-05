@@ -128,6 +128,17 @@ type ValkeySpec struct {
 	// +kubebuilder:validation:Enum=ip;hostname;unknown-endpoint
 	// +optional
 	ClusterPreferredEndpointType string `json:"clusterPreferredEndpointType,omitempty"`
+
+	// PlatformManagedSecurityContext delegates security context management to the platform.
+	// When true, the operator omits the following fields from pod and container security contexts,
+	// allowing the platform (e.g., OpenShift) to manage them via SCCs or Pod Security Standards:
+	// - RunAsUser, RunAsGroup, FSGroup (user/group IDs)
+	// - FSGroupChangePolicy, SupplementalGroups
+	// - SELinuxOptions
+	// When false (default), these fields are set to explicit values (e.g., 1001 for user/group IDs).
+	// +kubebuilder:default:=false
+	// +optional
+	PlatformManagedSecurityContext bool `json:"platformManagedSecurityContext,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration
