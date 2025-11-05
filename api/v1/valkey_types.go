@@ -129,13 +129,16 @@ type ValkeySpec struct {
 	// +optional
 	ClusterPreferredEndpointType string `json:"clusterPreferredEndpointType,omitempty"`
 
-	// DontManageSecurityContextIds prevents the operator from setting RunAsUser and RunAsGroup.
-	// When true, RunAsUser and RunAsGroup will not be set in the pod security context,
-	// allowing the platform (e.g., OpenShift) to assign them automatically. When false (default),
-	// they are set to 1001.
+	// PlatformManagedSecurityContext delegates security context management to the platform.
+	// When true, the operator omits the following fields from pod and container security contexts,
+	// allowing the platform (e.g., OpenShift) to manage them via SCCs or Pod Security Standards:
+	// - RunAsUser, RunAsGroup, FSGroup (user/group IDs)
+	// - FSGroupChangePolicy, SupplementalGroups
+	// - SELinuxOptions
+	// When false (default), these fields are set to explicit values (e.g., 1001 for user/group IDs).
 	// +kubebuilder:default:=false
 	// +optional
-	DontManageSecurityContextIds bool `json:"dontManageSecurityContextIds,omitempty"`
+	PlatformManagedSecurityContext bool `json:"platformManagedSecurityContext,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration

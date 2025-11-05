@@ -2255,7 +2255,7 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 }
 
 func getRunAsUser(valkey *hyperv1.Valkey) *int64 {
-	if valkey.Spec.DontManageSecurityContextIds {
+	if valkey.Spec.PlatformManagedSecurityContext {
 		return nil
 	}
 	// Default to 1001
@@ -2263,7 +2263,7 @@ func getRunAsUser(valkey *hyperv1.Valkey) *int64 {
 }
 
 func getRunAsGroup(valkey *hyperv1.Valkey) *int64 {
-	if valkey.Spec.DontManageSecurityContextIds {
+	if valkey.Spec.PlatformManagedSecurityContext {
 		return nil
 	}
 	// Default to 1001
@@ -2271,7 +2271,7 @@ func getRunAsGroup(valkey *hyperv1.Valkey) *int64 {
 }
 
 func getFSGroup(valkey *hyperv1.Valkey) *int64 {
-	if valkey.Spec.DontManageSecurityContextIds {
+	if valkey.Spec.PlatformManagedSecurityContext {
 		return nil
 	}
 	// Default to 1001
@@ -2279,7 +2279,7 @@ func getFSGroup(valkey *hyperv1.Valkey) *int64 {
 }
 
 func getFSGroupChangePolicy(valkey *hyperv1.Valkey) *corev1.PodFSGroupChangePolicy {
-	if valkey.Spec.DontManageSecurityContextIds {
+	if valkey.Spec.PlatformManagedSecurityContext {
 		return nil
 	}
 	// Default to Always
@@ -2287,7 +2287,7 @@ func getFSGroupChangePolicy(valkey *hyperv1.Valkey) *corev1.PodFSGroupChangePoli
 }
 
 func getSupplementalGroups(valkey *hyperv1.Valkey) []int64 {
-	if valkey.Spec.DontManageSecurityContextIds {
+	if valkey.Spec.PlatformManagedSecurityContext {
 		return nil
 	}
 	// Default to empty array
@@ -2295,7 +2295,7 @@ func getSupplementalGroups(valkey *hyperv1.Valkey) []int64 {
 }
 
 func getSELinuxOptions(valkey *hyperv1.Valkey) *corev1.SELinuxOptions {
-	if valkey.Spec.DontManageSecurityContextIds {
+	if valkey.Spec.PlatformManagedSecurityContext {
 		return nil
 	}
 	// Default to empty options
@@ -2305,7 +2305,7 @@ func getSELinuxOptions(valkey *hyperv1.Valkey) *corev1.SELinuxOptions {
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
 	logger := log.FromContext(ctx)
 
-	logger.Info("upserting statefulset", "dontManageSecurityContextIds", valkey.Spec.DontManageSecurityContextIds)
+	logger.Info("upserting statefulset")
 	tls := "no"
 	endpointType := "ip"
 	if valkey.Spec.TLS {
