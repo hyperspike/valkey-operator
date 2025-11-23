@@ -2100,9 +2100,9 @@ func (r *ValkeyReconciler) exporter(valkey *hyperv1.Valkey) corev1.Container {
 			Privileged:             func(b bool) *bool { return &b }(false),
 			ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
 			RunAsNonRoot:           func(b bool) *bool { return &b }(true),
-			RunAsUser:              func(i int64) *int64 { return &i }(1001),
-			RunAsGroup:             func(i int64) *int64 { return &i }(1001),
-			SELinuxOptions:         &corev1.SELinuxOptions{},
+			RunAsUser:              getRunAsUser(valkey),
+			RunAsGroup:             getRunAsGroup(valkey),
+			SELinuxOptions:         getSELinuxOptions(valkey),
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: "RuntimeDefault",
 			},
@@ -2254,6 +2254,54 @@ func getInitContainerResourceRequirements() corev1.ResourceRequirements {
 	}
 }
 
+func getRunAsUser(valkey *hyperv1.Valkey) *int64 {
+	if valkey.Spec.PlatformManagedSecurityContext {
+		return nil
+	}
+	// Default to 1001
+	return func(i int64) *int64 { return &i }(1001)
+}
+
+func getRunAsGroup(valkey *hyperv1.Valkey) *int64 {
+	if valkey.Spec.PlatformManagedSecurityContext {
+		return nil
+	}
+	// Default to 1001
+	return func(i int64) *int64 { return &i }(1001)
+}
+
+func getFSGroup(valkey *hyperv1.Valkey) *int64 {
+	if valkey.Spec.PlatformManagedSecurityContext {
+		return nil
+	}
+	// Default to 1001
+	return func(i int64) *int64 { return &i }(1001)
+}
+
+func getFSGroupChangePolicy(valkey *hyperv1.Valkey) *corev1.PodFSGroupChangePolicy {
+	if valkey.Spec.PlatformManagedSecurityContext {
+		return nil
+	}
+	// Default to Always
+	return func(s corev1.PodFSGroupChangePolicy) *corev1.PodFSGroupChangePolicy { return &s }(corev1.FSGroupChangeAlways)
+}
+
+func getSupplementalGroups(valkey *hyperv1.Valkey) []int64 {
+	if valkey.Spec.PlatformManagedSecurityContext {
+		return nil
+	}
+	// Default to empty array
+	return []int64{}
+}
+
+func getSELinuxOptions(valkey *hyperv1.Valkey) *corev1.SELinuxOptions {
+	if valkey.Spec.PlatformManagedSecurityContext {
+		return nil
+	}
+	// Default to empty options
+	return &corev1.SELinuxOptions{}
+}
+
 func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv1.Valkey) error { // nolint:gocyclo
 	logger := log.FromContext(ctx)
 
@@ -2294,9 +2342,11 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 					EnableServiceLinks: func(b bool) *bool { return &b }(false),
 					HostNetwork:        false,
 					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup:             func(i int64) *int64 { return &i }(1001),
-						FSGroupChangePolicy: func(s corev1.PodFSGroupChangePolicy) *corev1.PodFSGroupChangePolicy { return &s }(corev1.FSGroupChangeAlways),
-						SupplementalGroups:  []int64{},
+						RunAsUser:           getRunAsUser(valkey),
+						RunAsGroup:          getRunAsGroup(valkey),
+						FSGroup:             getFSGroup(valkey),
+						FSGroupChangePolicy: getFSGroupChangePolicy(valkey),
+						SupplementalGroups:  getSupplementalGroups(valkey),
 						Sysctls:             []corev1.Sysctl{},
 					},
 					AutomountServiceAccountToken: func(b bool) *bool { return &b }(false),
@@ -2330,9 +2380,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 								Privileged:             func(b bool) *bool { return &b }(false),
 								ReadOnlyRootFilesystem: func(b bool) *bool { return &b }(true),
 								RunAsNonRoot:           func(b bool) *bool { return &b }(true),
-								RunAsUser:              func(i int64) *int64 { return &i }(1001),
-								RunAsGroup:             func(i int64) *int64 { return &i }(1001),
-								SELinuxOptions:         &corev1.SELinuxOptions{},
+								RunAsUser:              getRunAsUser(valkey),
+								RunAsGroup:             getRunAsGroup(valkey),
+								SELinuxOptions:         getSELinuxOptions(valkey),
 								SeccompProfile: &corev1.SeccompProfile{
 									Type: "RuntimeDefault",
 								},
