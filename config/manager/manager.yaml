@@ -79,6 +79,13 @@ spec:
           - --health-probe-bind-address=:8081
         image: controller:latest
         name: manager
+        ports: 
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
         env:
         - name: APP_NAME
           valueFrom:
