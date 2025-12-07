@@ -514,9 +514,26 @@ func (r *ValkeyReconciler) initCluster(ctx context.Context, valkey *hyperv1.Valk
 	}
 
 	expectedNodeCount := int(valkey.Spec.Shards + valkey.Spec.Shards*valkey.Spec.Replicas)
-	if len(connectedNodes) != expectedNodeCount {
-		logger.Error(fmt.Errorf("not all nodes are connected yet, expected %d, got %d",
-			expectedNodeCount, len(connectedNodes)), "not all nodes are connected yet", "expected", expectedNodeCount, "connected", len(connectedNodes))
+	// Wait until all nodes are connected
+	for len(connectedNodes) != expectedNodeCount {
+		logger.Info("waiting for all nodes to be connected", "expected", expectedNodeCount, "connected", len(connectedNodes))
+		closeClients()
+		time.Sleep(time.Second * 5)
+		cluster, closeClients, err = r.buildCluster(ctx, valkey)
+		defer closeClients()
+		if err != nil {
+			logger.Error(err, "failed to build cluster during wait")
+			return err
+		}
+		connectedNodes = make([]*valkeyNode, 0)
+		for _, shard := range cluster.shards {
+			for _, node := range shard.nodes {
+				if !node.connected {
+					continue
+				}
+				connectedNodes = append(connectedNodes, node)
+			}
+		}
 	}
 
 	// ensure that all nodes in the cluster are connected to each other
@@ -2691,11 +2708,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 		err = fmt.Errorf("storage has been added but cannot be updated in a statefuleset")
 		logger.Error(err, "unable to update storage in statefulset")
 		return err
-	} else if valkey.Spec.Storage == nil && len(existingSts.Spec.VolumeClaimTemplates) == 1 {
-		err = fmt.Errorf("storage has been removed but cannot be updated in a statefuleset")
-		logger.Error(err, "unable to update storage in statefulset")
-		return err
-	} else {
+	} else if valkey.Spec.Storage == nil && len(existingSts.Spec.VolumeClaimTemplates) > 0 {
+		logger.Info("storage has been removed but cannot be updated in a statefuleset, keeping existing storage")
+	} else if valkey.Spec.Storage != nil && len(existingSts.Spec.VolumeClaimTemplates) > 0 {
 		defaultStorageClass := r.defaultStorageClass(ctx)
 		currentPVCSpec := existingSts.Spec.VolumeClaimTemplates[0].Spec
 		definedPVCSpec := valkey.Spec.Storage.Spec
