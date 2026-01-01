@@ -13,7 +13,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  VALKEY_VERSION: 9.0.1 # valkey version
+  VALKEY_VERSION: 9.0.1 # valkey version with cluster and numbered databases
   RELEASE_VERSION: ${{ github.ref_name }}
 
 jobs:
