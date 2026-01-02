@@ -7,21 +7,21 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: valkey-editor-role
 rules:
-- apiGroups:
-  - hyperspike.io
-  resources:
-  - valkeys
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - hyperspike.io
-  resources:
-  - valkeys/status
-  verbs:
-  - get
+  - apiGroups:
+      - oxlayer
+    resources:
+      - valkeys
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - oxlayer
+    resources:
+      - valkeys/status
+    verbs:
+      - get

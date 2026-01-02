@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-REGISTRY_OWNER ?= hyperspike
+REGISTRY_OWNER ?= oxlayer
 REGISTRY ?= ghcr.io/$(REGISTRY_OWNER)
 IMG_CONTROLLER ?= $(REGISTRY)/valkey-operator:$(VERSION)
 IMG_SIDECAR ?= $(REGISTRY)/valkey-sidecar:$(VERSION)
@@ -19,7 +19,7 @@ KUBECTL := $(shell which kubectl)
 VERSION ?= $(shell  if [ ! -z $$(git tag --points-at HEAD) ] ; then git tag --points-at HEAD|cat ; else  git rev-parse --short HEAD|cat; fi )
 DATE ?= $(shell date -u  +'%Y%m%d')
 SHA ?= $(shell git rev-parse --short HEAD)
-PKG ?= hyperspike.io/valkey-operator
+PKG ?= oxlayer.io/valkey-operator
 GOOS ?= linux
 GOARCH ?= amd64
 
@@ -217,8 +217,8 @@ minikube: ## Spool up a local minikube cluster for development
 quickstart: minikube install-operator install-cr ## Install the operator into the minikube cluster and deploy the sample CR use the TLS and PROMETHEUS variables to enable those features
 
 install-operator: ## Install the operator into the minikube cluster
-	$QLATEST=$(shell curl -s https://api.github.com/repos/hyperspike/valkey-operator/releases/latest | jq -Mr .tag_name) \
-		&& curl -sL https://github.com/hyperspike/valkey-operator/releases/download/$$LATEST/install.yaml | kubectl apply -f -
+	$QLATEST=$(shell curl -s https://api.github.com/repos/oxlayer/valkey-operator/releases/latest | jq -Mr .tag_name) \
+		&& curl -sL https://github.com/oxlayer/valkey-operator/releases/download/$$LATEST/install.yaml | kubectl apply -f -
 install-cr: ## Install the sample CR into the minikube cluster
 	$Q(if [ ! -z $$TLS ] ; then TLS_VALUE=true ; else TLS_VALUE=false ; fi ; if [ ! -z $$PROMETHEUS ] ; then PROMETHEUS_VALUE=true ; else PROMETHEUS_VALUE=false ; fi ;  sed -e "s/@TLS@/$$TLS_VALUE/" -e "s/@PROMETHEUS@/$$PROMETHEUS_VALUE/" valkey.yml.tpl | $(KUBECTL) apply -f - )
 

@@ -40,9 +40,9 @@ import (
 
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	hyperspikeiov1 "hyperspike.io/valkey-operator/api/v1"
-	"hyperspike.io/valkey-operator/cfg"
-	"hyperspike.io/valkey-operator/internal/controller"
+	oxlayerv1 "oxlayer/valkey-operator/api/v1"
+	"oxlayer/valkey-operator/cfg"
+	"oxlayer/valkey-operator/internal/controller"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	// +kubebuilder:scaffold:imports
@@ -61,7 +61,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(hyperspikeiov1.AddToScheme(scheme))
+	utilruntime.Must(oxlayerv1.AddToScheme(scheme))
 	utilruntime.Must(monitoringv1.AddToScheme(scheme))
 	utilruntime.Must(certv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
@@ -132,7 +132,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "4ca2c877.hyperspike.io",
+		LeaderElectionID:       "4ca2c877.oxlayer",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

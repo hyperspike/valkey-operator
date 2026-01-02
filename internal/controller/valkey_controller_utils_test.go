@@ -19,7 +19,7 @@ package controller
 import (
 	"testing"
 
-	hyperspikeiov1 "hyperspike.io/valkey-operator/api/v1"
+	oxlayerv1 "oxlayer/valkey-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -28,7 +28,7 @@ func TestLabels(t *testing.T) {
 	testLabels := map[string]string{
 		"app": "valkey",
 	}
-	valkey := &hyperspikeiov1.Valkey{
+	valkey := &oxlayerv1.Valkey{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-resource",
 			Namespace: "default",
@@ -59,7 +59,7 @@ func TestAnnotations(t *testing.T) {
 	testAnnotations := map[string]string{
 		"app": "valkey",
 	}
-	valkey := &hyperspikeiov1.Valkey{
+	valkey := &oxlayerv1.Valkey{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "test-resource",
 			Namespace:   "default",
@@ -73,7 +73,7 @@ func TestAnnotations(t *testing.T) {
 }
 
 func TestServicePasswordKey(t *testing.T) {
-	valkey := &hyperspikeiov1.Valkey{
+	valkey := &oxlayerv1.Valkey{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-resource",
 			Namespace: "default",
@@ -93,7 +93,7 @@ func TestServicePasswordKey(t *testing.T) {
 }
 
 func TestServicePasswordName(t *testing.T) {
-	valkey := &hyperspikeiov1.Valkey{
+	valkey := &oxlayerv1.Valkey{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-resource",
 			Namespace: "default",

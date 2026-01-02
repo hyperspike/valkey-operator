@@ -7,17 +7,17 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: valkey-viewer-role
 rules:
-- apiGroups:
-  - hyperspike.io
-  resources:
-  - valkeys
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - hyperspike.io
-  resources:
-  - valkeys/status
-  verbs:
-  - get
+  - apiGroups:
+      - oxlayer
+    resources:
+      - valkeys
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - oxlayer
+    resources:
+      - valkeys/status
+    verbs:
+      - get

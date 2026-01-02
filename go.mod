@@ -1,4 +1,4 @@
-module hyperspike.io/valkey-operator
+module oxlayer/valkey-operator
 
 go 1.25.0
 

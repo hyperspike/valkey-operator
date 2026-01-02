@@ -57,8 +57,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	hyperv1 "hyperspike.io/valkey-operator/api/v1"
-	globalcfg "hyperspike.io/valkey-operator/cfg"
+	hyperv1 "oxlayer/valkey-operator/api/v1"
+	globalcfg "oxlayer/valkey-operator/cfg"
 )
 
 const (
@@ -106,9 +106,9 @@ type ValkeyReconciler struct {
 //go:embed scripts/*
 var scripts embed.FS
 
-// +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=hyperspike.io,resources=valkeys/finalizers,verbs=update
+// +kubebuilder:rbac:groups=oxlayer,resources=valkeys,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=oxlayer,resources=valkeys/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=oxlayer,resources=valkeys/finalizers,verbs=update
 // +kubebuilder:rbac:groups=cert-manager.io,resources=clusterissuers;issuers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete

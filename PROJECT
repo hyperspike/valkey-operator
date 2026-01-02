@@ -2,18 +2,18 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-domain: hyperspike.io
+domain: oxlayer
 layout:
 - go.kubebuilder.io/v4
 projectName: valkey-operator
-repo: hyperspike.io/valkey-operator
+repo: oxlayer/valkey-operator
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: hyperspike.io
+  domain: oxlayer
   kind: Valkey
-  path: hyperspike.io/valkey-operator/api/v1
+  path: oxlayer/valkey-operator/api/v1
   version: v1
 version: "3"

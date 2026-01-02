@@ -30,7 +30,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	hyperspikeiov1 "hyperspike.io/valkey-operator/api/v1"
+	oxlayerv1 "oxlayer/valkey-operator/api/v1"
 )
 
 var _ = Describe("Valkey Controller", func() {
@@ -43,13 +43,13 @@ var _ = Describe("Valkey Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		valkey := &hyperspikeiov1.Valkey{}
+		valkey := &oxlayerv1.Valkey{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Valkey")
 			err := k8sClient.Get(ctx, typeNamespacedName, valkey)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &hyperspikeiov1.Valkey{
+				resource := &oxlayerv1.Valkey{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -62,7 +62,7 @@ var _ = Describe("Valkey Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &hyperspikeiov1.Valkey{}
+			resource := &oxlayerv1.Valkey{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
