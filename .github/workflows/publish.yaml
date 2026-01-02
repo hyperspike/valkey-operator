@@ -79,5 +79,12 @@ jobs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Authenticate Helm to OCI registry
+      run: |
+        echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+          -u ${{ github.actor }} \
+          --password-stdin
     - name: Package and Upload Helm Chart
+      env:
+        REGISTRY_OWNER: ${{ github.repository_owner }}
       run: make helm-publish V=1 IMG=ghcr.io/${{ github.repository_owner }}/valkey-operator:${{ github.ref_name }}
