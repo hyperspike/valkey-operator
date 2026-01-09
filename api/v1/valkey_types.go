@@ -24,6 +24,89 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// RDBSpec defines the RDB persistence configuration
+type RDBSpec struct {
+	// Enable RDB persistence
+	// +kubebuilder:default:=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Save rules for RDB snapshots. Each rule is in the format "seconds changes".
+	// Example: ["900 1", "300 10", "60 10000"] means save after 900s if 1 key changed,
+	// after 300s if 10 keys changed, or after 60s if 10000 keys changed.
+	// +optional
+	SaveRules []string `json:"saveRules,omitempty"`
+
+	// Compress string objects using LZF when dumping RDB files
+	// +kubebuilder:default:=true
+	// +optional
+	Compression *bool `json:"compression,omitempty"`
+
+	// Enable CRC64 checksum at the end of RDB files
+	// +kubebuilder:default:=true
+	// +optional
+	Checksum *bool `json:"checksum,omitempty"`
+
+	// Stop accepting writes if RDB snapshots are enabled and the latest background save failed
+	// +kubebuilder:default:=true
+	// +optional
+	StopWritesOnBgSaveError *bool `json:"stopWritesOnBgSaveError,omitempty"`
+}
+
+// AOFSpec defines the AOF (Append Only File) persistence configuration
+type AOFSpec struct {
+	// Enable AOF persistence
+	// +kubebuilder:default:=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Fsync policy: "always", "everysec", or "no"
+	// - always: fsync after every write (slow, safest)
+	// - everysec: fsync once per second (compromise)
+	// - no: let the OS flush when it wants (faster, less safe)
+	// +kubebuilder:default:="everysec"
+	// +kubebuilder:validation:Enum=always;everysec;no
+	// +optional
+	Fsync string `json:"fsync,omitempty"`
+
+	// Don't fsync during AOF rewrite/RDB save to avoid blocking
+	// +kubebuilder:default:=false
+	// +optional
+	NoAppendFsyncOnRewrite *bool `json:"noAppendFsyncOnRewrite,omitempty"`
+
+	// Automatic AOF rewrite percentage. Rewrite when AOF grows by this percentage.
+	// Set to 0 to disable auto-rewrite.
+	// +kubebuilder:default:=100
+	// +optional
+	AutoRewritePercentage *int32 `json:"autoRewritePercentage,omitempty"`
+
+	// Minimum size for AOF file to be rewritten
+	// +kubebuilder:default:="64mb"
+	// +optional
+	AutoRewriteMinSize string `json:"autoRewriteMinSize,omitempty"`
+
+	// Load truncated AOF file on startup instead of failing
+	// +kubebuilder:default:=true
+	// +optional
+	LoadTruncated *bool `json:"loadTruncated,omitempty"`
+
+	// Use RDB preamble in AOF for faster loading
+	// +kubebuilder:default:=true
+	// +optional
+	UseRDBPreamble *bool `json:"useRDBPreamble,omitempty"`
+}
+
+// PersistenceSpec defines the persistence configuration for Valkey
+type PersistenceSpec struct {
+	// RDB persistence configuration
+	// +optional
+	RDB *RDBSpec `json:"rdb,omitempty"`
+
+	// AOF persistence configuration
+	// +optional
+	AOF *AOFSpec `json:"aof,omitempty"`
+}
+
 // ValkeySpec defines the desired state of Valkey
 type ValkeySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -84,6 +167,10 @@ type ValkeySpec struct {
 	// is necessary.
 	// +optional
 	Storage *corev1.PersistentVolumeClaim `json:"storage,omitempty"`
+
+	// Persistence configuration for RDB and AOF
+	// +optional
+	Persistence *PersistenceSpec `json:"persistence,omitempty"`
 
 	// Resources requirements and limits for the Valkey Server container
 	// +optional
