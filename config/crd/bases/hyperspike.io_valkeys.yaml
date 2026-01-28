@@ -241,6 +241,85 @@ spec:
                 description: Number of shards. Each node is a primary
                 format: int32
                 type: integer
+              persistence:
+                description: Persistence configuration for RDB and AOF
+                properties:
+                  aof:
+                    description: AOF persistence configuration
+                    properties:
+                      autoRewriteMinSize:
+                        default: 64mb
+                        description: Minimum size for AOF file to be rewritten
+                        type: string
+                      autoRewritePercentage:
+                        default: 100
+                        description: |-
+                          Automatic AOF rewrite percentage. Rewrite when AOF grows by this percentage.
+                          Set to 0 to disable auto-rewrite.
+                        format: int32
+                        type: integer
+                      enabled:
+                        default: false
+                        description: Enable AOF persistence
+                        type: boolean
+                      fsync:
+                        default: everysec
+                        description: |-
+                          Fsync policy: "always", "everysec", or "no"
+                          - always: fsync after every write (slow, safest)
+                          - everysec: fsync once per second (compromise)
+                          - no: let the OS flush when it wants (faster, less safe)
+                        enum:
+                        - always
+                        - everysec
+                        - "no"
+                        type: string
+                      loadTruncated:
+                        default: true
+                        description: Load truncated AOF file on startup instead of
+                          failing
+                        type: boolean
+                      noAppendFsyncOnRewrite:
+                        default: false
+                        description: Don't fsync during AOF rewrite/RDB save to avoid
+                          blocking
+                        type: boolean
+                      useRDBPreamble:
+                        default: true
+                        description: Use RDB preamble in AOF for faster loading
+                        type: boolean
+                    type: object
+                  rdb:
+                    description: RDB persistence configuration
+                    properties:
+                      checksum:
+                        default: true
+                        description: Enable CRC64 checksum at the end of RDB files
+                        type: boolean
+                      compression:
+                        default: true
+                        description: Compress string objects using LZF when dumping
+                          RDB files
+                        type: boolean
+                      enabled:
+                        default: true
+                        description: Enable RDB persistence
+                        type: boolean
+                      saveRules:
+                        description: |-
+                          Save rules for RDB snapshots. Each rule is in the format "seconds changes".
+                          Example: ["900 1", "300 10", "60 10000"] means save after 900s if 1 key changed,
+                          after 300s if 10 keys changed, or after 60s if 10000 keys changed.
+                        items:
+                          type: string
+                        type: array
+                      stopWritesOnBgSaveError:
+                        default: true
+                        description: Stop accepting writes if RDB snapshots are enabled
+                          and the latest background save failed
+                        type: boolean
+                    type: object
+                type: object
               platformManagedSecurityContext:
                 default: false
                 description: |-
@@ -485,7 +564,7 @@ spec:
                       resources:
                         description: |-
                           resources represents the minimum resources the volume should have.
-                          If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
+                          Users are allowed to specify resource requirements
                           that are lower than previous value but must still be higher than capacity recorded in the
                           status field of the claim.
                           More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
@@ -642,8 +721,7 @@ spec:
                           for the purpose it was designed. For example - a controller
                           that\nonly is responsible for resizing capacity of the volume,
                           should ignore PVC updates that change other valid\nresources
-                          associated with PVC.\n\nThis is an alpha field and requires
-                          enabling RecoverVolumeExpansionFailure feature."
+                          associated with PVC."
                         type: object
                         x-kubernetes-map-type: granular
                       allocatedResources:
@@ -674,8 +752,7 @@ spec:
                           for the purpose it was designed. For example - a controller
                           that\nonly is responsible for resizing capacity of the volume,
                           should ignore PVC updates that change other valid\nresources
-                          associated with PVC.\n\nThis is an alpha field and requires
-                          enabling RecoverVolumeExpansionFailure feature."
+                          associated with PVC."
                         type: object
                       capacity:
                         additionalProperties:
@@ -795,9 +872,10 @@ spec:
                     operator:
                       description: |-
                         Operator represents a key's relationship to the value.
-                        Valid operators are Exists and Equal. Defaults to Equal.
+                        Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                         Exists is equivalent to wildcard for value, so that a pod can
                         tolerate all taints of a particular category.
+                        Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                       type: string
                     tolerationSeconds:
                       description: |-

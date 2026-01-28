@@ -381,7 +381,26 @@ func (r *ValkeyReconciler) upsertConfigMap(ctx context.Context, valkey *hyperv1.
 		logger.Error(err, "failed to read valkey.conf")
 		return err
 	}
-	confTmpl, err := template.New("valkey.conf").Parse(string(defaultConfTmpl))
+	// Template functions for persistence configuration
+	funcMap := template.FuncMap{
+		"deref": func(ptr interface{}) interface{} {
+			switch v := ptr.(type) {
+			case *bool:
+				if v == nil {
+					return false
+				}
+				return *v
+			case *int32:
+				if v == nil {
+					return int32(0)
+				}
+				return *v
+			default:
+				return ptr
+			}
+		},
+	}
+	confTmpl, err := template.New("valkey.conf").Funcs(funcMap).Parse(string(defaultConfTmpl))
 	if err != nil {
 		logger.Error(err, "failed to parse valkey.conf")
 		return err
