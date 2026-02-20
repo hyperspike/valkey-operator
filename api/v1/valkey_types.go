@@ -123,6 +123,10 @@ type ValkeySpec struct {
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
+	// Image Pull Secrets
+	// +optional
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
 	// Which endpoint is shown as the preferred endpoint valid values are 'ip', 'hostname', or 'unknown-endpoint'.
 	// +kubebuilder:default:="ip"
 	// +kubebuilder:validation:Enum=ip;hostname;unknown-endpoint
