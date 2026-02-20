@@ -255,6 +255,7 @@ helm-gen: manifests kustomize helmify ## Generate Helm chart from Kustomize mani
 	$Q$(KUSTOMIZE) build config/default | $(HELMIFY) -crd-dir valkey-operator
 	$Qsed s@\\\(app.kubernetes.io/name\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
 	$Qsed s@\\\(app.kubernetes.io/instance\\\)@\'\\\1\'@ -i valkey-operator/templates/deployment.yaml
+	$Qawk '/serviceAccountName:/{print "      {{- with .Values.controllerManager.imagePullSecrets }}";print "      imagePullSecrets:";print "        {{- toYaml . | nindent 8 }}";print "      {{- end }}"}{print}' valkey-operator/templates/deployment.yaml > valkey-operator/templates/deployment.yaml.tmp && mv valkey-operator/templates/deployment.yaml.tmp valkey-operator/templates/deployment.yaml
 
 helm-package: helm-gen helm ## Package Helm chart
 	$Q$(HELM) package valkey-operator --app-version $(VERSION) --version $(VERSION)-chart
