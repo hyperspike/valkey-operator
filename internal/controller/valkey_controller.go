@@ -1243,6 +1243,7 @@ func (r *ValkeyReconciler) upsertExternalAccessProxyDeployment(ctx context.Conte
 					Labels: proxyLabels,
 				},
 				Spec: corev1.PodSpec{
+					ImagePullSecrets: valkey.Spec.ImagePullSecrets,
 					Containers: []corev1.Container{
 						{
 							Name:  "envoy",
@@ -2365,8 +2366,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 							},
 						},
 					},
-					Tolerations:  valkey.Spec.Tolerations,
-					NodeSelector: valkey.Spec.NodeSelector,
+					Tolerations:      valkey.Spec.Tolerations,
+					NodeSelector:     valkey.Spec.NodeSelector,
+					ImagePullSecrets: valkey.Spec.ImagePullSecrets,
 					Containers: []corev1.Container{
 						{
 							Image: image,
@@ -2668,6 +2670,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 	}
 	if !cmp.Equal(existingSts.Spec.Template.Spec.Containers[0].Command, sts.Spec.Template.Spec.Containers[0].Command) {
 		updateReasons = append(updateReasons, "command")
+	}
+	if !cmp.Equal(existingSts.Spec.Template.Spec.ImagePullSecrets, sts.Spec.Template.Spec.ImagePullSecrets) {
+		updateReasons = append(updateReasons, "imagePullSecrets")
 	}
 
 	if *existingSts.Spec.Replicas != (valkey.Spec.Shards * (valkey.Spec.Replicas + 1)) {
