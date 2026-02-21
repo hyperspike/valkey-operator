@@ -8,7 +8,7 @@ RUN apk add --no-cache --virtual .build-deps \
 	coreutils=9.8-r1 \
 	linux-headers=6.16.12-r0 \
 	musl-dev=1.2.5-r21 \
-	openssl-dev=3.5.4-r0 \
+	openssl-dev=3.5.5-r0 \
 	gcc=15.2.0-r2 \
 	curl=8.17.0-r1 \
 	make=4.4.1-r3 \
@@ -20,7 +20,7 @@ RUN apk add --no-cache --virtual .build-deps \
 FROM alpine:3.23.2 AS valkey
 
 RUN apk add --no-cache \
-	openssl=3.5.4-r0 \
+	openssl=3.5.5-r0 \
 	ca-certificates=20251003-r0 \
 	coreutils=9.8-r1 \
 	&& addgroup -S valkey -g 1009 \

@@ -228,9 +228,32 @@ spec:
                 - enabled
                 - type
                 type: object
+              extraConfig:
+                description: |-
+                  ExtraConfig is appended verbatim to the end of valkey.conf.
+                  Use for arbitrary directives like maxmemory, save, appendonly, etc.
+                type: string
               image:
                 description: Image to use
                 type: string
+              modules:
+                description: Modules to load at startup via loadmodule directive.
+                items:
+                  description: ModuleConfig defines a Valkey module to load at startup.
+                  properties:
+                    args:
+                      description: Args are optional arguments passed to the module
+                        at load time.
+                      items:
+                        type: string
+                      type: array
+                    path:
+                      description: Path to the module shared library.
+                      type: string
+                  required:
+                  - path
+                  type: object
+                type: array
               nodeSelector:
                 additionalProperties:
                   type: string
@@ -485,7 +508,7 @@ spec:
                       resources:
                         description: |-
                           resources represents the minimum resources the volume should have.
-                          If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
+                          Users are allowed to specify resource requirements
                           that are lower than previous value but must still be higher than capacity recorded in the
                           status field of the claim.
                           More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
@@ -642,8 +665,7 @@ spec:
                           for the purpose it was designed. For example - a controller
                           that\nonly is responsible for resizing capacity of the volume,
                           should ignore PVC updates that change other valid\nresources
-                          associated with PVC.\n\nThis is an alpha field and requires
-                          enabling RecoverVolumeExpansionFailure feature."
+                          associated with PVC."
                         type: object
                         x-kubernetes-map-type: granular
                       allocatedResources:
@@ -674,8 +696,7 @@ spec:
                           for the purpose it was designed. For example - a controller
                           that\nonly is responsible for resizing capacity of the volume,
                           should ignore PVC updates that change other valid\nresources
-                          associated with PVC.\n\nThis is an alpha field and requires
-                          enabling RecoverVolumeExpansionFailure feature."
+                          associated with PVC."
                         type: object
                       capacity:
                         additionalProperties:
@@ -795,9 +816,10 @@ spec:
                     operator:
                       description: |-
                         Operator represents a key's relationship to the value.
-                        Valid operators are Exists and Equal. Defaults to Equal.
+                        Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                         Exists is equivalent to wildcard for value, so that a pod can
                         tolerate all taints of a particular category.
+                        Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                       type: string
                     tolerationSeconds:
                       description: |-
