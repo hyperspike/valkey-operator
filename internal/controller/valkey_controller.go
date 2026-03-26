@@ -25,7 +25,6 @@ import (
 	"embed"
 	"fmt"
 	"io"
-	"maps"
 	"math/big"
 	"net"
 	"os"
@@ -262,15 +261,40 @@ func (r *ValkeyReconciler) validateValkeySpec(valkey *hyperv1.Valkey) error {
 }
 
 func labels(valkey *hyperv1.Valkey) map[string]string {
-	l := maps.Clone(valkey.Labels)
+	l := make(map[string]string)
+	for k, v := range valkey.Labels {
+		// Skip applyset ownership labels — these are injected by tools like
+		// KRO, ArgoCD, or kubectl apply --prune. Propagating them to child
+		// resources (Services, StatefulSets) causes the tool to treat those
+		// children as managed, leading to unintended pruning.
+		if strings.HasPrefix(k, "applyset.kubernetes.io/") {
+			continue
+		}
+		l[k] = v
+	}
 	l["app.kubernetes.io/name"] = Valkey
 	l["app.kubernetes.io/instance"] = valkey.Name
 	l["app.kubernetes.io/component"] = Valkey
 	return l
 }
 
+// annotations returns the Valkey CR's annotations, filtering out
+// applyset.kubernetes.io/* entries for the same reason as labels().
 func annotations(valkey *hyperv1.Valkey) map[string]string {
-	return valkey.Annotations
+	if len(valkey.Annotations) == 0 {
+		return nil
+	}
+	a := make(map[string]string, len(valkey.Annotations))
+	for k, v := range valkey.Annotations {
+		if strings.HasPrefix(k, "applyset.kubernetes.io/") {
+			continue
+		}
+		a[k] = v
+	}
+	if len(a) == 0 {
+		return nil
+	}
+	return a
 }
 
 func (r *ValkeyReconciler) getCACertificate(ctx context.Context, valkey *hyperv1.Valkey) (string, error) {

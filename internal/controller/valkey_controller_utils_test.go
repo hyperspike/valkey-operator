@@ -55,6 +55,126 @@ func TestLabels(t *testing.T) {
 	}
 }
 
+func TestLabelsNilMap(t *testing.T) {
+	valkey := &hyperspikeiov1.Valkey{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-resource",
+			Namespace: "default",
+			// Labels intentionally nil
+		},
+	}
+	result := labels(valkey)
+	if result == nil {
+		t.Fatal("Expected non-nil map, got nil")
+	}
+	if result["app.kubernetes.io/name"] != "valkey" {
+		t.Errorf("Expected %v, got %v", "valkey", result["app.kubernetes.io/name"])
+	}
+	if result["app.kubernetes.io/instance"] != "test-resource" {
+		t.Errorf("Expected %v, got %v", "test-resource", result["app.kubernetes.io/instance"])
+	}
+}
+
+func TestLabelsApplySetFiltering(t *testing.T) {
+	valkey := &hyperspikeiov1.Valkey{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-resource",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app":                            "valkey",
+				"team":                           "platform",
+				"applyset.kubernetes.io/part-of":  "applyset-abc123",
+				"applyset.kubernetes.io/id":       "some-id",
+				"applyset.kubernetes.io/tooling":  "kro/v0.8.5",
+			},
+		},
+	}
+	result := labels(valkey)
+
+	// User labels should be propagated
+	if result["app"] != "valkey" {
+		t.Errorf("Expected user label 'app' to be propagated, got %v", result["app"])
+	}
+	if result["team"] != "platform" {
+		t.Errorf("Expected user label 'team' to be propagated, got %v", result["team"])
+	}
+
+	// ApplySet labels should NOT be propagated
+	if _, ok := result["applyset.kubernetes.io/part-of"]; ok {
+		t.Error("applyset.kubernetes.io/part-of should not be propagated to child resources")
+	}
+	if _, ok := result["applyset.kubernetes.io/id"]; ok {
+		t.Error("applyset.kubernetes.io/id should not be propagated to child resources")
+	}
+	if _, ok := result["applyset.kubernetes.io/tooling"]; ok {
+		t.Error("applyset.kubernetes.io/tooling should not be propagated to child resources")
+	}
+
+	// Standard labels should still be set
+	if result["app.kubernetes.io/name"] != "valkey" {
+		t.Errorf("Expected %v, got %v", "valkey", result["app.kubernetes.io/name"])
+	}
+}
+
+func TestAnnotationsApplySetFiltering(t *testing.T) {
+	valkey := &hyperspikeiov1.Valkey{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-resource",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"user-annotation":                             "keep-me",
+				"applyset.kubernetes.io/contains-group-kinds": "Service,Deployment.apps",
+				"applyset.kubernetes.io/additional-namespaces": "flux-system",
+				"applyset.kubernetes.io/tooling":               "kro/v0.8.5",
+			},
+		},
+	}
+	result := annotations(valkey)
+
+	// User annotations should be propagated
+	if result["user-annotation"] != "keep-me" {
+		t.Errorf("Expected user annotation to be propagated, got %v", result["user-annotation"])
+	}
+
+	// ApplySet annotations should NOT be propagated
+	if _, ok := result["applyset.kubernetes.io/contains-group-kinds"]; ok {
+		t.Error("applyset.kubernetes.io/contains-group-kinds should not be propagated to child resources")
+	}
+	if _, ok := result["applyset.kubernetes.io/additional-namespaces"]; ok {
+		t.Error("applyset.kubernetes.io/additional-namespaces should not be propagated to child resources")
+	}
+}
+
+func TestAnnotationsOnlyApplySet(t *testing.T) {
+	valkey := &hyperspikeiov1.Valkey{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-resource",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"applyset.kubernetes.io/contains-group-kinds": "Service",
+				"applyset.kubernetes.io/tooling":               "kro/v0.8.5",
+			},
+		},
+	}
+	result := annotations(valkey)
+	if result != nil {
+		t.Errorf("Expected nil when all annotations are filtered, got %v", result)
+	}
+}
+
+func TestAnnotationsNil(t *testing.T) {
+	valkey := &hyperspikeiov1.Valkey{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-resource",
+			Namespace: "default",
+		},
+	}
+	result := annotations(valkey)
+	if result != nil {
+		t.Errorf("Expected nil for empty annotations, got %v", result)
+	}
+}
+
 func TestAnnotations(t *testing.T) {
 	testAnnotations := map[string]string{
 		"app": "valkey",
