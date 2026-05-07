@@ -92,6 +92,52 @@ func TestServicePasswordKey(t *testing.T) {
 	}
 }
 
+func TestResolveEndpointType(t *testing.T) {
+	tests := []struct {
+		name     string
+		spec     hyperspikeiov1.ValkeySpec
+		expected string
+	}{
+		{
+			name:     "defaults to ip when nothing is set",
+			spec:     hyperspikeiov1.ValkeySpec{},
+			expected: "ip",
+		},
+		{
+			name:     "respects ClusterPreferredEndpointType=hostname",
+			spec:     hyperspikeiov1.ValkeySpec{ClusterPreferredEndpointType: "hostname"},
+			expected: "hostname",
+		},
+		{
+			name:     "respects ClusterPreferredEndpointType=ip explicitly",
+			spec:     hyperspikeiov1.ValkeySpec{ClusterPreferredEndpointType: "ip"},
+			expected: "ip",
+		},
+		{
+			name:     "TLS overrides ClusterPreferredEndpointType to hostname",
+			spec:     hyperspikeiov1.ValkeySpec{TLS: true, ClusterPreferredEndpointType: "ip"},
+			expected: "hostname",
+		},
+		{
+			name:     "TLS implies hostname even when ClusterPreferredEndpointType is unset",
+			spec:     hyperspikeiov1.ValkeySpec{TLS: true},
+			expected: "hostname",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			valkey := &hyperspikeiov1.Valkey{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+				Spec:       tt.spec,
+			}
+			result := resolveEndpointType(valkey)
+			if result != tt.expected {
+				t.Errorf("resolveEndpointType() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestServicePasswordName(t *testing.T) {
 	valkey := &hyperspikeiov1.Valkey{
 		ObjectMeta: metav1.ObjectMeta{
