@@ -232,6 +232,11 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
 		}
 	}
+	if valkey.Spec.ClusterPreferredEndpointType == "hostname" {
+		if err := r.setClusterAnnounceHostname(ctx, valkey); err != nil {
+			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
+		}
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -259,6 +264,18 @@ func (r *ValkeyReconciler) validateValkeySpec(valkey *hyperv1.Valkey) error {
 		valkey.Labels = map[string]string{}
 	}
 	return nil
+}
+
+// resolveEndpointType returns the effective cluster endpoint type for a Valkey CR.
+// TLS always implies hostname. When not set, ip is the default.
+func resolveEndpointType(valkey *hyperv1.Valkey) string {
+	if valkey.Spec.TLS {
+		return "hostname"
+	}
+	if valkey.Spec.ClusterPreferredEndpointType != "" {
+		return valkey.Spec.ClusterPreferredEndpointType
+	}
+	return "ip"
 }
 
 func labels(valkey *hyperv1.Valkey) map[string]string {
@@ -869,6 +886,55 @@ func (r *ValkeyReconciler) setClusterAnnounceIp(ctx context.Context, valkey *hyp
 	}
 	*/
 	return nil
+}
+
+// setClusterAnnounceHostname sets cluster-announce-hostname on every pod so that
+// the cluster topology is stable across pod restarts when ClusterPreferredEndpointType
+// is "hostname". Without this, nodes.conf retains the old pod IP after rescheduling
+// and clients that re-read cluster slots receive a stale address.
+func (r *ValkeyReconciler) setClusterAnnounceHostname(ctx context.Context, valkey *hyperv1.Valkey) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("setting cluster announce hostname")
+
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(valkey.Namespace), client.MatchingLabels(labels(valkey))); err != nil {
+		logger.Error(err, "failed to list pods")
+		return err
+	}
+
+	var err error
+	for _, pod := range pods.Items {
+		hostname := fmt.Sprintf("%s.%s-headless.%s.svc.%s", pod.Name, valkey.Name, valkey.Namespace, valkey.Spec.ClusterDomain)
+		address := fmt.Sprintf("%s:%d", hostname, ValkeyPort)
+		c, clientErr := r.getClient(ctx, valkey, address, true)
+		if clientErr != nil {
+			logger.Error(clientErr, "failed to create valkey client", "pod", pod.Name)
+			return clientErr
+		}
+		defer c.Close()
+
+		logger.Info("setting cluster announce hostname", "hostname", hostname, "pod", pod.Name)
+		r.Recorder.Event(valkey, "Normal", "Setting",
+			fmt.Sprintf("Setting cluster announce hostname %s on pod %s for %s/%s", hostname, pod.Name, valkey.Namespace, valkey.Name))
+
+		out, err := c.Do(ctx, c.B().ConfigSet().ParameterValue().ParameterValue("cluster-announce-hostname", hostname).Build()).ToString()
+		if err != nil {
+			logger.Error(err, "failed to set cluster announce hostname "+out, "pod", pod.Name)
+			return err
+		}
+		cfgs, err := c.Do(ctx, c.B().ConfigGet().Parameter("cluster-announce-hostname").Build()).ToMap()
+		if err != nil {
+			logger.Error(err, "failed to get cluster announce hostname", "pod", pod.Name)
+		}
+		for k, v := range cfgs {
+			str, _ := v.ToString()
+			if str != hostname {
+				logger.Error(err, "failed to verify cluster announce hostname", k, str)
+			}
+		}
+	}
+	return err
 }
 
 func (r *ValkeyReconciler) fetchExternalIPs(ctx context.Context, valkey *hyperv1.Valkey) (map[string]string, error) {
@@ -2307,10 +2373,9 @@ func (r *ValkeyReconciler) upsertStatefulSet(ctx context.Context, valkey *hyperv
 
 	logger.Info("upserting statefulset")
 	tls := "no"
-	endpointType := "ip"
+	endpointType := resolveEndpointType(valkey)
 	if valkey.Spec.TLS {
 		tls = "yes"
-		endpointType = "hostname"
 	}
 	image := r.GlobalConfig.ValkeyImage
 	if valkey.Spec.Image != "" {
