@@ -1,28 +1,28 @@
-FROM alpine:3.23.2 AS builder
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS builder
 
 ARG VALKEY_VERSION=9.0.1
 WORKDIR /home/valkey
 
 RUN apk add --no-cache --virtual .build-deps \
-	git=2.52.0-r0 \
-	coreutils=9.8-r1 \
-	linux-headers=6.16.12-r0 \
-	musl-dev=1.2.5-r21 \
-	openssl-dev=3.5.4-r0 \
-	gcc=15.2.0-r2 \
-	curl=8.17.0-r1 \
-	make=4.4.1-r3 \
+	git=2.54.0-r0 \
+	coreutils=9.11-r0 \
+	linux-headers=7.0.0-r1 \
+	musl-dev=1.2.6-r2 \
+	openssl-dev=3.5.7-r0 \
+	gcc=15.2.0-r5 \
+	curl=8.20.0-r1 \
+	make=4.4.1-r4 \
 	&& curl -L https://github.com/valkey-io/valkey/archive/refs/tags/${VALKEY_VERSION}.tar.gz -o valkey.tar.gz \
 	&& tar -xzf valkey.tar.gz --strip-components=1 \
 	&& make PREFIX=/usr BUILD_TLS=yes \
 	&& make install BUILD_TLS=yes PREFIX=/home/valkey/build
 
-FROM alpine:3.23.2 AS valkey
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS valkey
 
 RUN apk add --no-cache \
-	openssl=3.5.4-r0 \
-	ca-certificates=20251003-r0 \
-	coreutils=9.8-r1 \
+	openssl=3.5.7-r0 \
+	ca-certificates=20260611-r0 \
+	coreutils=9.11-r0 \
 	&& addgroup -S valkey -g 1009 \
 	&& adduser -S -G valkey valkey -u 1009 \
 	&& mkdir /etc/valkey \
