@@ -207,11 +207,22 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, err
 		}
 	}
-	if err = r.upsertPodDisruptionBudget(ctx, valkey); err != nil {
-		return ctrl.Result{}, err
+	if !valkey.Spec.Standalone {
+		if err = r.upsertPodDisruptionBudget(ctx, valkey); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 	if err = r.upsertStatefulSet(ctx, valkey); err != nil {
 		return ctrl.Result{}, err
+	}
+	if valkey.Spec.Standalone {
+		if err = r.checkState(ctx, valkey); err != nil {
+			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
+		}
+		if !valkey.Status.Ready {
+			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
+		}
+		return ctrl.Result{}, nil
 	}
 	if err = r.initCluster(ctx, valkey); err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, err
@@ -237,6 +248,11 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *ValkeyReconciler) validateValkeySpec(valkey *hyperv1.Valkey) error {
+	if valkey.Spec.Standalone {
+		valkey.Spec.Shards = 1
+		valkey.Spec.Replicas = 0
+	}
+
 	if valkey.Spec.Shards < 1 {
 		valkey.Spec.Shards = r.GlobalConfig.Nodes
 		if valkey.Spec.Shards < 1 {
@@ -310,7 +326,7 @@ func (r *ValkeyReconciler) checkState(ctx context.Context, valkey *hyperv1.Valke
 
 	initHost := fmt.Sprintf("%s.%s.svc", valkey.Name, valkey.Namespace)
 	initAddress := fmt.Sprintf("%s:%d", initHost, ValkeyPort)
-	vClient, err := r.getClient(ctx, valkey, initAddress, false)
+	vClient, err := r.getClient(ctx, valkey, initAddress, valkey.Spec.Standalone)
 	if err != nil {
 		logger.Error(err, "failed to create valkey client")
 		return err

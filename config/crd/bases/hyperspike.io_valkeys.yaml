@@ -368,6 +368,15 @@ spec:
                 - key
                 type: object
                 x-kubernetes-map-type: atomic
+              standalone:
+                default: false
+                description: |-
+                  Standalone runs a single Valkey server with cluster mode disabled
+                  (cluster-enabled no) rather than a Valkey Cluster. When true the operator
+                  deploys exactly one server and skips the cluster bootstrap (cluster meet,
+                  add-slots, rebalance and cluster-announce-ip). Shards and Replicas are
+                  forced to a single node in this mode.
+                type: boolean
               storage:
                 description: |-
                   Persistent volume claim. The kind and metadata can be omitted, but the spec
@@ -485,7 +494,7 @@ spec:
                       resources:
                         description: |-
                           resources represents the minimum resources the volume should have.
-                          If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
+                          Users are allowed to specify resource requirements
                           that are lower than previous value but must still be higher than capacity recorded in the
                           status field of the claim.
                           More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
@@ -642,8 +651,7 @@ spec:
                           for the purpose it was designed. For example - a controller
                           that\nonly is responsible for resizing capacity of the volume,
                           should ignore PVC updates that change other valid\nresources
-                          associated with PVC.\n\nThis is an alpha field and requires
-                          enabling RecoverVolumeExpansionFailure feature."
+                          associated with PVC."
                         type: object
                         x-kubernetes-map-type: granular
                       allocatedResources:
@@ -674,8 +682,7 @@ spec:
                           for the purpose it was designed. For example - a controller
                           that\nonly is responsible for resizing capacity of the volume,
                           should ignore PVC updates that change other valid\nresources
-                          associated with PVC.\n\nThis is an alpha field and requires
-                          enabling RecoverVolumeExpansionFailure feature."
+                          associated with PVC."
                         type: object
                       capacity:
                         additionalProperties:
@@ -795,9 +802,10 @@ spec:
                     operator:
                       description: |-
                         Operator represents a key's relationship to the value.
-                        Valid operators are Exists and Equal. Defaults to Equal.
+                        Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                         Exists is equivalent to wildcard for value, so that a pod can
                         tolerate all taints of a particular category.
+                        Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                       type: string
                     tolerationSeconds:
                       description: |-
