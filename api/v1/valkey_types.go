@@ -139,6 +139,15 @@ type ValkeySpec struct {
 	// +kubebuilder:default:=false
 	// +optional
 	PlatformManagedSecurityContext bool `json:"platformManagedSecurityContext,omitempty"`
+
+	// Standalone runs a single Valkey server with cluster mode disabled
+	// (cluster-enabled no) rather than a Valkey Cluster. When true the operator
+	// deploys exactly one server and skips the cluster bootstrap (cluster meet,
+	// add-slots, rebalance and cluster-announce-ip). Shards and Replicas are
+	// forced to a single node in this mode.
+	// +kubebuilder:default:=false
+	// +optional
+	Standalone bool `json:"standalone,omitempty"`
 }
 
 // ExternalAccess defines the external access configuration

@@ -8,6 +8,20 @@ This operator creates valkey clusters and makes them available to other services
 
 See the following link for more information on available Custom Resource Options: [https://doc.crds.dev/github.com/hyperspike/valkey-operator](https://doc.crds.dev/github.com/hyperspike/valkey-operator)
 
+### Standalone
+
+A `Valkey` resource is provisioned as a Valkey Cluster by default. To run a single,
+non-clustered server (`cluster-enabled no`) instead, set `standalone`:
+
+```yaml
+apiVersion: hyperspike.io/v1
+kind: Valkey
+metadata:
+  name: valkey
+spec:
+  standalone: true
+```
+
 ## Getting Started
 
 ### Prerequisites

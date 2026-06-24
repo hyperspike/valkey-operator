@@ -17,9 +17,13 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
+	"strings"
 	"testing"
+	"text/template"
 
 	hyperspikeiov1 "hyperspike.io/valkey-operator/api/v1"
+	globalcfg "hyperspike.io/valkey-operator/cfg"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -111,5 +115,82 @@ func TestServicePasswordName(t *testing.T) {
 	result = getServicePasswordName(valkey)
 	if result != "test-password" {
 		t.Errorf("Expected %v, got %v", "test-password", result)
+	}
+}
+
+func TestStandaloneConfigRender(t *testing.T) {
+	render := func(standalone bool) string {
+		raw, err := scripts.ReadFile("scripts/valkey.conf")
+		if err != nil {
+			t.Fatalf("failed to read valkey.conf: %v", err)
+		}
+		tmpl, err := template.New("valkey.conf").Parse(string(raw))
+		if err != nil {
+			t.Fatalf("failed to parse valkey.conf: %v", err)
+		}
+		valkey := &hyperspikeiov1.Valkey{
+			Spec: hyperspikeiov1.ValkeySpec{
+				Standalone:                   standalone,
+				ClusterPreferredEndpointType: "ip",
+			},
+		}
+		buf := &bytes.Buffer{}
+		if err := tmpl.Execute(buf, valkey); err != nil {
+			t.Fatalf("failed to render valkey.conf: %v", err)
+		}
+		return buf.String()
+	}
+
+	hasDirective := func(conf, name string) bool {
+		for _, line := range strings.Split(conf, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), name+" ") {
+				return true
+			}
+		}
+		return false
+	}
+
+	standalone := render(true)
+	if !strings.Contains(standalone, "cluster-enabled no") {
+		t.Errorf("standalone config should set 'cluster-enabled no'")
+	}
+	if hasDirective(standalone, "cluster-config-file") {
+		t.Errorf("standalone config should not set cluster-config-file")
+	}
+	if hasDirective(standalone, "cluster-preferred-endpoint-type") {
+		t.Errorf("standalone config should not set cluster-preferred-endpoint-type")
+	}
+
+	cluster := render(false)
+	if !strings.Contains(cluster, "cluster-enabled yes") {
+		t.Errorf("cluster config should set 'cluster-enabled yes'")
+	}
+	if !hasDirective(cluster, "cluster-config-file") {
+		t.Errorf("cluster config should set cluster-config-file")
+	}
+}
+
+func TestValidateStandaloneCoercesSingleNode(t *testing.T) {
+	r := &ValkeyReconciler{
+		GlobalConfig: &globalcfg.Config{
+			ValkeyImage:  "valkey",
+			SidecarImage: "sidecar",
+		},
+	}
+	valkey := &hyperspikeiov1.Valkey{
+		Spec: hyperspikeiov1.ValkeySpec{
+			Standalone: true,
+			Shards:     3,
+			Replicas:   2,
+		},
+	}
+	if err := r.validateValkeySpec(valkey); err != nil {
+		t.Fatalf("validateValkeySpec returned error: %v", err)
+	}
+	if valkey.Spec.Shards != 1 {
+		t.Errorf("Expected %v, got %v", 1, valkey.Spec.Shards)
+	}
+	if valkey.Spec.Replicas != 0 {
+		t.Errorf("Expected %v, got %v", 0, valkey.Spec.Replicas)
 	}
 }
